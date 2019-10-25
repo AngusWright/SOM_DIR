@@ -20,6 +20,7 @@
             "\nTraining data manipulation:\n",
             "                -r : [switch] rescale (i.e. whiten) the input data prior to training the SOM\n",
             "               -nr : [switch] do not rescale (i.e. whiten) the input data prior to training the SOM\n",
+            "               -rt : (string) what type of rescaling do you want? Can use 'mean' or 'median' statistics\n",
             "\nSOM construction and training:\n",
             "                -t : [switch] use a toroidal (i.e. non-flat) SOM topology\n",
             "               -nt : [switch] use a flat (i.e. non-toroidal) SOM topology\n",
@@ -66,11 +67,12 @@
             "internal default parameters to be used for a number of settings. This means that running:\n",
             "  Rscript DIR_som.R -i ... -k ... \n",
             "is equivalent to running: \n",
-            "  Rscript DIR_som.R -i ... -k ... --seed 666 -r -t --topo hexagonal -sd 55 55 -sr 0.05 0.01 -sm pbatch -sc -1 \\\n",
-            "                    -si 100 -fn 100 \n",
+            "  Rscript DIR_som.R -i ... -k ... --seed 666 -r -rt median -t --topo hexagonal -sd 55 55 \\\n",
+            "                    -sr 0.05 0.01 -sm pbatch -sc -1 -si 100 -fn 100 \n",
             "These internal defaults are:\n",
             "            --seed : (666)       seed number to use for Randoms generation. Default: 666\n",
             "                -r : [switch]    rescale (i.e. whiten) the input data prior to training the SOM\n",
+            "               -rt : (median)    what type of rescaling do you want? Can use 'mean' or 'median' statistics\n",
             "                -t : [switch]    use a toroidal (i.e. non-flat) SOM topology\n",
             "            --topo : (hexagonal) pixel topology for the SOM; must be either 'rectangular' or 'hexagonal'\n",
             "     --som.dim -sd : (55 55)     the dimension of the SOM \n",
@@ -88,29 +90,54 @@
             "will cause no plots to be output (because we set: some plots (-p), then all plots (-pp), and then no plots (-np)).\n",
             "The _exception_ to this rule is '--test': the test parameters are set to their lower values BEFORE reading all other parameters.\n",
             "This is so one can always override the lower 'test' settings, if desired. \n\n"))
-#}}}
   quit()
 }
 #}}}
 
 #Read the command line options {{{
 inputs<-commandArgs(TRUE)
-if (length(inputs)==0) { .help.print() } 
+if (length(inputs)==0 | any(inputs=='-h')) { .help.print() } 
+if (any(inputs=='-hd')) { .default.print() } 
 #}}}
+
+#Function to quickly check for and install libraries {{{
+require.and.load<-function(name,githubrep) {
+  if (suppressPackageStartupMessages(suppressWarnings(!require(name,character.only=TRUE)))) {
+    if (!missing(githubrep)) {
+      devtools::install_github(paste(githubrep,name,sep='/'),upgrade='always')
+      if (grepl('/',name)) {
+        name<-rev(strsplit(name,'/')[[1]])[1]
+      }
+    } else {
+      install.packages(name,repos='https://cloud.r-project.org/')
+    }
+    if (suppressPackageStartupMessages(suppressWarnings(!require(name,character.only=TRUE)))) {
+      stop(paste("Failed to install package",name))
+    }
+  }
+}#}}}
 
 #Start the timer and load the required Packages {{{
 start.timer<-proc.time()[3]
-suppressWarnings(suppressPackageStartupMessages(require(kohonen)))
-suppressWarnings(suppressPackageStartupMessages(require(RColorBrewer)))
-suppressWarnings(suppressPackageStartupMessages(require(helpRfuncs)))
-suppressWarnings(suppressPackageStartupMessages(require(LAMBDAR)))
-suppressWarnings(suppressPackageStartupMessages(require(KernSmooth)))
-suppressWarnings(suppressPackageStartupMessages(require(itertools)))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('devtools')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('RColorBrewer')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('kohonen')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('KernSmooth')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('itertools')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('matrixStats')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('data.table')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('helpRfuncs','AngusWright')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('FITSio')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('LAMBDAR','AngusWright')))
+suppressWarnings(suppressPackageStartupMessages(require.and.load('kohonen/kohonen','AngusWright')))
 #}}}
 
 #Functions {{{
 #Function to scale a colour palette to desired quantiles {{{
 scale.palette<-function(X,probs=c(0.1,0.9),palette=terrain.colors,n=1e3) { 
+  if (n > length(X)) { 
+    n<-floor(length(X)*4/5)
+  }
   cells<-seq(min(X,na.rm=T),max(X,na.rm=T),length=n+1)
   lims<-quantile(X,probs=probs,na.rm=TRUE)
   palette.cols<-palette(n)
@@ -349,8 +376,8 @@ ldac.options.1<-ldac.options.2<-''
 addstr<-''
 output.path<-'./'
 keys<-"-k MAG_GAAP_u MAG_GAAP_g MAG_GAAP_r MAG_GAAP_i MAG_GAAP_Z MAG_GAAP_Y MAG_GAAP_J MAG_GAAP_H MAG_GAAP_Ks"
-zr.label<-"z_spec"
-zt.label<-"Z_B"
+zr.label<-"Z_B"
+zt.label<-"z_spec"
 factor.label<-paste0('MAG_GAAP_',c('u','g','r','i','Z','Y','J','H','Ks'))
 factor.nbins<-100
 som.dim<-c(55,55)
@@ -363,6 +390,8 @@ som.rate<-c(0.05,0.01)
 ldactoasc<-""# system('which ldactoasc',intern=TRUE)
 catalogues<-NULL
 rescale<-TRUE
+rescale.type<-'median'
+trim.sigma<-Inf 
 testing<-FALSE
 #}}}
 #Loop through the command arguments {{{
@@ -404,6 +433,15 @@ while (length(inputs)!=0) {
   } else if (inputs[1]=='-nr') {
     #do not rescale input parameters {{{
     rescale<-FALSE
+    inputs<-inputs[-1]
+    #}}}
+  } else if (inputs[1]=='-rt') {
+    #rescale input parameters {{{
+    inputs<-inputs[-1]
+    rescale.type<-inputs[1]
+    if (!rescale.type %in% c("mean","median")) {
+      stop("rescale type argument (-rt) must be 'mean' or 'median'.")
+    }
     inputs<-inputs[-1]
     #}}}
   } else if (inputs[1]=='-as') {
@@ -452,7 +490,7 @@ while (length(inputs)!=0) {
     if (length(key.ids)<4) { 
       stop("There are no columns to group the data on!")
     } else if (length(key.ids)>=4) { 
-      suppressWarnings(suppressPackageStartupMessages(require(kohonen)))
+      #suppressWarnings(suppressPackageStartupMessages(require.and.load('kohonen')))
       #factor.label<-keys[-(1:3)]
       factor.label<-keys
     } else { 
@@ -465,8 +503,8 @@ while (length(inputs)!=0) {
     #Create the full keys string
     #keys<-paste(keys,collapse=' ')
     keys<-paste('-k',paste(unique((vecsplit(gsub('[-+*\\/\\)\\(]'," ",keys),' '))),collapse=' '))
-    #}}}
     input.key.opt<-TRUE
+    #}}}
   } else if (inputs[1]=='-of') {
     #Define the output directory  {{{
     inputs<-inputs[-1]
@@ -529,9 +567,11 @@ while (length(inputs)!=0) {
     inputs<-inputs[-1]
     #}}}
   } else if (inputs[1]=='--sparse.var') {
+    #Variable to sample over {{{
     inputs<-inputs[-1]
     sparse.var<-inputs[1]
     inputs<-inputs[-1]
+    #}}}
   } else if (inputs[1]=='--sparse.som') {
     #Load an already calculated som from file {{{
     inputs<-inputs[-1]
@@ -591,6 +631,19 @@ while (length(inputs)!=0) {
     #Define the number of SOM iterations {{{
     inputs<-inputs[-1]
     som.iter<-as.numeric(inputs[1])
+    inputs<-inputs[-1]
+    #}}}
+  } else if (inputs[1]=='--trim') {
+    #Trim the rescaled data vector parameter space to 'n'-sigma {{{
+    inputs<-inputs[-1]
+    trim.sigma<-as.numeric(inputs[1])
+    if (!is.finite(trim.sigma)) { 
+      stop("Specified trim sigma value is non-finite!")
+    } else if (trim.sigma<0) { 
+      stop("Specified trim sigma value is less than 0!")
+    } else if (trim.sigma==0) { 
+      stop("Specified trim sigma value is 0!")
+    }
     inputs<-inputs[-1]
     #}}}
   } else if (inputs[1]=='--seed') {
@@ -690,7 +743,7 @@ if (grepl('.cat',refr.catpath,fixed=T)) {
   if (!quiet) { cat(" (with ldactoasc):\n\n") }
   refr.cat<-try(read.ldac(refr.catpath,ldactoasc=ldactoasc,data.table=TRUE,
                      diagnostic=TRUE ,options=paste('-s',keys,zr.label,count.variable.1,ldac.options.1),force=TRUE,clean=TRUE,showProgress=FALSE),silent=TRUE)
-  if (suppressWarnings(class(refr.cat)=='try-error')) { 
+  if (suppressWarnings(class(refr.cat)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to read input catalogue. Check your ldactoasc binary?\n",
                 "  NB: We assume that input \'.cat\' files are in LDAC format. Table details can be specified at input.\n",
@@ -699,7 +752,7 @@ if (grepl('.cat',refr.catpath,fixed=T)) {
   if (!quiet) { cat("\n  -----> Completed!\n") }
 } else if (grepl('.Rdata',refr.catpath,fixed=T)) {
   nam<-try(load(refr.catpath),silent=TRUE)
-  if (suppressWarnings(class(nam)=='try-error')) { 
+  if (suppressWarnings(class(nam)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to load input Rdata catalogue.\n"))
   }
@@ -715,13 +768,13 @@ if (grepl('.cat',refr.catpath,fixed=T)) {
   } 
 } else if (grepl('.fits',refr.catpath,fixed=T)) {
   refr.cat<-try(read.fits.cat(refr.catpath,data.table=TRUE),silent=TRUE)
-  if (suppressWarnings(class(refr.cat)=='try-error')) { 
+  if (suppressWarnings(class(refr.cat)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to read input fits catalogue.\n"))
   }
 } else if (grepl('.csv',refr.catpath,fixed=T) | grepl('.asc',refr.catpath,fixed=T)) {
   refr.cat<-try(fread(refr.catpath,data.table=TRUE,showProgress=FALSE),silent=TRUE)
-  if (suppressWarnings(class(refr.cat)=='try-error')) { 
+  if (suppressWarnings(class(refr.cat)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to read input CSV catalogue.\n"))
   }
@@ -736,6 +789,11 @@ if (!is.data.table(refr.cat)){
 if (testing) {
   refr.cat<-refr.cat[runif(nrow(refr.cat))<0.2,]
 }
+#Check if it has the redshift column {{{
+if (plot>0 & !zr.label%in%colnames(refr.cat)) { 
+  stop(paste("Reference cat does not contain the",zr.label,"column. Fix the column name or turn off plots to avoid this error."))
+}
+#}}}
 #Catalogue length
 refr.cat.len<-nrow(refr.cat)
 if (!quiet) { 
@@ -811,7 +869,7 @@ if (grepl('.cat',train.catpath,fixed=T)) {
   if (!quiet) { cat(" (with ldactoasc):\n\n") }
   train.cat<-try(read.ldac(train.catpath,ldactoasc=ldactoasc,data.table=FALSE,
                      diagnostic=TRUE ,options=paste('-s',keys,zt.label,count.variable.2,ldac.options.2),force=TRUE,clean=TRUE,showProgress=FALSE),silent=TRUE)
-  if (suppressWarnings(class(train.cat)=='try-error')) { 
+  if (suppressWarnings(class(train.cat)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to read input catalogue. Check your ldactoasc binary?\n",
                 "  NB: We assume that input \'.cat\' files are in LDAC format. Table details can be specified at input.\n",
@@ -820,7 +878,7 @@ if (grepl('.cat',train.catpath,fixed=T)) {
   if (!quiet) { cat("\n  -----> Completed!\n") }
 } else if (grepl('.Rdata',train.catpath,fixed=T)) {
   nam<-try(load(train.catpath),silent=TRUE)
-  if (suppressWarnings(class(nam)=='try-error')) { 
+  if (suppressWarnings(class(nam)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to load input Rdata catalogue.\n"))
   }
@@ -836,13 +894,13 @@ if (grepl('.cat',train.catpath,fixed=T)) {
   } 
 } else if (grepl('.fits',train.catpath,fixed=T)) {
   train.cat<-try(read.fits.cat(train.catpath,data.table=FALSE),silent=TRUE)
-  if (suppressWarnings(class(train.cat)=='try-error')) { 
+  if (suppressWarnings(class(train.cat)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to read input fits catalogue.\n"))
   }
 } else if (grepl('.csv',train.catpath,fixed=T) | grepl('.asc',refr.catpath,fixed=T)) {
   train.cat<-try(fread(train.catpath,data.table=FALSE,showProgress=FALSE),silent=TRUE)
-  if (suppressWarnings(class(train.cat)=='try-error')) { 
+  if (suppressWarnings(class(train.cat)[1]=='try-error')) { 
     cat(" - ")
     stop(paste0("Failure to read input CSV catalogue.\n"))
   }
@@ -854,6 +912,11 @@ if (grepl('.cat',train.catpath,fixed=T)) {
 if (!is.data.table(train.cat)){ 
   train.cat<-as.data.table(train.cat)
 }
+#Check if it has the redshift column {{{
+if (plot>0 & !zt.label%in%colnames(train.cat)) { 
+  stop(paste("Training cat does not contain the",zt.label,"column. Fix the column name or turn off plots to avoid this error."))
+}
+#}}}
 train.catnam<-rev(strsplit(train.catpath,'/')[[1]])[1]
 train.ending<-rev(strsplit(train.catnam,'.',fixed=TRUE)[[1]])[1]
 if (testing) {
@@ -912,7 +975,13 @@ if (length(factor.label)==1) {
   #Notify {{{
   if (!quiet) { 
     cat(" (multiple numeric factors) {\n")
-    cat("    -> constructing scaled data vector")
+    if (rescale & is.finite(trim.sigma)) { 
+      cat("    -> constructing scaled & trimmed data vector")
+    } else if (rescale) { 
+      cat("    -> constructing scaled data vector")
+    } else {
+      cat("    -> constructing data vector")
+    }
   }#}}}
   #Check for character columns {{{
   seperated.labels<-unique((vecsplit(gsub('[-+*\\/\\)\\(]'," ",factor.label),' ')))
@@ -963,9 +1032,15 @@ if (length(factor.label)==1) {
     train.value[train.not.detected]<-NA
     refr.value[refr.not.detected]<-NA
     if (rescale & !reuse) { 
-      #Calculate the detected median and mad
-      med.tmp<-median(train.value,na.rm=T)
-      mad.tmp<-mad(train.value,na.rm=T)
+      if (rescale.type=='median') {
+        #Calculate the detected median and mad
+        med.tmp<-median(train.value,na.rm=T)
+        mad.tmp<-mad(train.value,na.rm=T)
+      } else { 
+        #Calculate the detected median and mad
+        med.tmp<-mean(train.value,na.rm=T)
+        mad.tmp<-sd(train.value-med.tmp,na.rm=T)
+      }
       #Scale the refr z and train z data consistently
       train.value<-(train.value-med.tmp)/mad.tmp
       refr.value<-(refr.value-med.tmp)/mad.tmp
@@ -975,10 +1050,12 @@ if (length(factor.label)==1) {
       train.value<-(train.value-rescale.param[1,factor.expr])/rescale.param[2,factor.expr]
       refr.value<-(refr.value-rescale.param[1,factor.expr])/rescale.param[2,factor.expr]
     } 
+    if (rescale & is.finite(trim.sigma)) { 
+      train.value[which(abs(train.value) > trim.sigma)]<-NA
+    } 
     train.sc[,factor.expr]<-train.value
     refr.sc[,factor.expr]<-refr.value
   }
-
   #Plot the resulting parameter distributions {{{ 
   if (plot>1) { 
     #Distributions before scaling {{{
@@ -1046,9 +1123,9 @@ if (length(factor.label)==1) {
     } else { 
       num_splits<-som.cores
     }
-    if (class(num_splits)!='try-error') { 
-      require(foreach)
-      require(doParallel)
+    if (class(num_splits)[1]!='try-error') { 
+      suppressWarnings(suppressPackageStartupMessages(require.and.load(foreach)))
+      suppressWarnings(suppressPackageStartupMessages(require.and.load(doParallel)))
       registerDoParallel(cores=num_splits)
       train.som$training.classif<-train.som$unit.classif
       if (!quiet) { 
@@ -1118,7 +1195,7 @@ if (length(factor.label)==1) {
         #}}}
       }
       train.som<-(som(train.sc[sparse.index,], grid=data.grid, rlen=som.iter, alpha=som.rate, cores=som.cores, mode=som.method,maxNA=maxNAfrac))
-      if (class(train.som)=='try-error') { 
+      if (class(train.som)[1]=='try-error') { 
         #Notify & Loop {{{
         cat("Error: SOM Training Failed! Skipping\n")
         if(!quiet & loop.num!=loop.length) { 
@@ -1158,9 +1235,9 @@ if (length(factor.label)==1) {
       } else { 
         num_splits<-som.cores
       }
-      if (class(num_splits)!='try-error') { 
-        require(foreach)
-        require(doParallel)
+      if (class(num_splits)[1]!='try-error') { 
+        suppressWarnings(suppressPackageStartupMessages(require(foreach)))
+        suppressWarnings(suppressPackageStartupMessages(require(doParallel)))
         registerDoParallel(cores=num_splits)
         if (!quiet) { 
           cat(paste(' [parallel:',round(nrow(train.sc)/num_splits),'gal/core]'))
@@ -1190,7 +1267,7 @@ if (length(factor.label)==1) {
       }#}}}
       #Calculate the SOM using the full data vector {{{
       train.som<-(som(train.sc, grid=data.grid, rlen=som.iter, alpha=som.rate, cores=som.cores, mode=som.method,maxNA=maxNAfrac))
-      if (class(train.som)=='try-error') { 
+      if (class(train.som)[1]=='try-error') { 
         #Notify & Loop {{{
         cat("Error: SOM Training Failed! Skipping\n")
         if(!quiet & loop.num!=loop.length) { 
@@ -1358,9 +1435,9 @@ if (som.cores<1) {
 } else { 
   num_splits<-som.cores
 }
-if (class(num_splits)!='try-error') { 
-  require(foreach)
-  require(doParallel)
+if (class(num_splits)[1]!='try-error') { 
+  suppressWarnings(suppressPackageStartupMessages(require(foreach)))
+  suppressWarnings(suppressPackageStartupMessages(require(doParallel)))
   registerDoParallel(cores=num_splits)
   if (!quiet) { 
     cat(paste(' [parallel:',round(nrow(refr.sc)/num_splits),'gal/core]'))
@@ -1454,8 +1531,8 @@ somclust<-refr.som$unit.classif
 #}}}
 #Convert the IDs from data-to-SOMcell into data-to-cluster {{{
 if (factor.nbins!=som.dim[1]*som.dim[2]) { 
-  require(foreach)
-  require(doParallel)
+  suppressWarnings(suppressPackageStartupMessages(require(foreach)))
+  suppressWarnings(suppressPackageStartupMessages(require(doParallel)))
   registerDoParallel(cores=num_splits)
   somind<-foreach(i=1:factor.nbins,.combine=rbind,.inorder=FALSE)%dopar%{ 
     #Assign the data to the cluster if it's SOMcell belongs to the cluster
@@ -1476,37 +1553,6 @@ if (!quiet) {
 }
 #}}}
 #Generate the weights {{{
-#train.cat$SOMweight<-NA
-#refr.cat$SOMweight<-NA
-#if (count.variable.1=='' & count.variable.2=='') { 
-#  for (i in 1:factor.nbins) { 
-#    train.index<-which(train.cat$GroupFactor==i)
-#    refr.index<-which(refr.cat$GroupFactor==i)
-#    train.cat[["SOMweight"]][train.index]<-length(refr.index)/length(train.index)
-#    refr.cat[["SOMweight"]][refr.index]<-length(train.index)/length(refr.index)
-#  }
-#} else if (count.variable.1=='') { 
-#  for (i in 1:factor.nbins) { 
-#    train.index<-which(train.cat$GroupFactor==i)
-#    refr.index<-which(refr.cat$GroupFactor==i)
-#    train.cat[["SOMweight"]][train.index]<-length(refr.index)/sum(train.cat[[count.variable.2]][train.index])
-#    refr.cat[["SOMweight"]][refr.index]<-sum(train.cat[[count.variable.2]][train.index],na.rm=T)/length(refr.index)
-#  }
-#} else if (count.variable.2=='') { 
-#  for (i in 1:factor.nbins) { 
-#    train.index<-which(train.cat$GroupFactor==i)
-#    refr.index<-which(refr.cat$GroupFactor==i)
-#    train.cat[["SOMweight"]][train.index]<-sum(refr.cat[[count.variable.1]][refr.index],na.rm=T)/length(train.index)
-#    refr.cat[["SOMweight"]][refr.index]<-length(train.index)/sum(refr.cat[[count.variable.1]][refr.index])
-#  }
-#} else { 
-#  for (i in 1:factor.nbins) { 
-#    train.index<-which(train.cat$GroupFactor==i)
-#    refr.index<-which(refr.cat$GroupFactor==i)
-#    train.cat[["SOMweight"]][train.index]<-sum(refr.cat[[count.variable.1]][refr.index],na.rm=T)/sum(train.cat[[count.variable.2]][train.index])
-#    refr.cat[["SOMweight"]][refr.index]<-sum(train.cat[[count.variable.2]][train.index],na.rm=T)/sum(refr.cat[[count.variable.1]][refr.index])
-#  }
-#} 
 if (count.variable.1=='' & count.variable.2=='') { 
   wtind<-foreach(i=1:factor.nbins,.combine=rbind,.inorder=TRUE)%dopar%{
     train.index<-which(train.cat$GroupFactor==i)
@@ -1541,6 +1587,13 @@ refr.cat[["SOMweight"]]<-1/wtind[refr.cat$GroupFactor,2]
 #train.cat$SOMweight<-train.cat$SOMweight/sum(train.cat$SOMweight,na.rm=TRUE)
 #Plot the SOM weights {{{
 if (plot>0) {
+  #Notify {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Plotting the Training data & Weights ")
+  }
+  #}}}
   png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_train_SOMweights.png',output.file,fixed=TRUE)),height=5*res,width=5*res,res=res)
   dens<-density(log10(train.cat$SOMweight),kernel='rect',from=-3,to=3,bw=0.1/sqrt(12),na.rm=TRUE)
   magplot(dens,xlab='SOMweight',ylab='PDF',unlog='x')
@@ -1556,6 +1609,11 @@ if (plot>0) {
 }
 #Paint the SOM weights {{{
 if (plot>0) {
+  if (som.dim[1]*som.dim[2] > 1e3) { 
+    n.colours<-1e3
+  } else { 
+    n.colours<-floor(som.dim[1]*som.dim[2]/2)
+  }
   wrefr.cell<-wtrain.cell<-rep(NA,som.dim[1]*som.dim[2])
   for (i in 1:factor.nbins) { 
     wtrain.cell[which(train.hc==i)]<-train.cat$SOMweight[which(train.cat$GroupFactor==i)[1]]
@@ -1564,9 +1622,9 @@ if (plot>0) {
   png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_SOMweights_paint.png',output.file,fixed=TRUE)),height=5*res,width=7*res,res=res)
   layout(cbind(1,2))
   plot(refr.som, type = "property", property = wrefr.cell,#zlim=c(0,1.5),
-       main="SOMweight_refr", palette.name=scale.palette(wrefr.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
+       main="SOMweight_refr", palette.name=scale.palette(wrefr.cell,palette=BlRd,n=n.colours),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=n.colours,heatkeyborder=NA)
   plot(train.som, type = "property", property = wtrain.cell,#zlim=c(0,1.5),
-       main="SOMweight_train", palette.name=scale.palette(wtrain.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
+       main="SOMweight_train", palette.name=scale.palette(wtrain.cell,palette=BlRd,n=n.colours),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=n.colours,heatkeyborder=NA)
   dev.off()
 }
 #}}}
@@ -1586,11 +1644,11 @@ if (plot>0) {
   layout(cbind(1,2))
   train.count.tab<-table(train.som$unit.classif)
   refr.count.tab<-table(refr.som$unit.classif)
-  plot(train.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Training Sample',palette=scale.palette(log10(train.count.tab)),ncol=1e3,heatkeyborder=NA,zlog=TRUE)
+  plot(train.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Training Sample',palette=scale.palette(log10(train.count.tab),n=n.colours),ncol=n.colours,heatkeyborder=NA,zlog=TRUE)
   #plot(train.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Training Sample',palette=scale.palette(train.count.tab),ncol=1e3,heatkeyborder=NA)
   #     #zlim=quantile(train.count.tab,probs=c(0.1,0.9),na.rm=TRUE))
   add.cluster.boundaries(train.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
-  plot(refr.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Reference Sample',palette=scale.palette(log10(refr.count.tab)),ncol=1e3,heatkeyborder=NA,zlog=TRUE)
+  plot(refr.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Reference Sample',palette=scale.palette(log10(refr.count.tab),n=n.colours),ncol=n.colours,heatkeyborder=NA,zlog=TRUE)
   #plot(refr.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Reference Sample',palette=scale.palette(refr.count.tab),ncol=1e3,heatkeyborder=NA)
   #     #zlim=quantile(refr.count.tab,probs=c(0.1,0.9),na.rm=TRUE))
   add.cluster.boundaries(refr.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
@@ -1642,13 +1700,13 @@ if (plot>0) {
     png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_zpaint.png',output.file,fixed=TRUE)),height=10*res,width=10*res,res=res)
     layout(matrix(1:4,2,2,byrow=T))
     plot(refr.som, type = "property", property = zrefr.cell,#zlim=c(0,1.5),
-         main="Z_refr", palette.name=scale.palette(zrefr.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
+         main="Z_refr", palette.name=scale.palette(zrefr.cell,palette=BlRd,n=n.colours),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=n.colours,heatkeyborder=NA)
     plot(train.som, type = "property", property = ztrain.cell,#zlim=c(0,1.5),
-         main="Z_B", palette.name=scale.palette(ztrain.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
+         main="Z_B", palette.name=scale.palette(ztrain.cell,palette=BlRd,n=n.colours),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=n.colours,heatkeyborder=NA)
     plot(refr.som, type = "property", property = zrefr.sd.cell,#zlim=c(0,0.5),
-         main=paste("mad","Z_refr"), palette.name=scale.palette(zrefr.sd.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
+         main=paste("mad","Z_refr"), palette.name=scale.palette(zrefr.sd.cell,palette=BlRd,n=n.colours),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=n.colours,heatkeyborder=NA)
     plot(train.som, type = "property", property = ztrain.sd.cell,#zlim=c(0,0.5),
-         main=paste("mad","Z_B"), palette.name=scale.palette(ztrain.sd.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
+         main=paste("mad","Z_B"), palette.name=scale.palette(ztrain.sd.cell,palette=BlRd,n=n.colours),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=n.colours,heatkeyborder=NA)
     dev.off()
     #}}}
   }

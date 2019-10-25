@@ -1,0 +1,15 @@
+#
+# Demonstration script for the SOM_DIR repository
+#
+
+#Print the help and default parameters 
+#Rscript R/DIR_som.R -h
+#Rscript R/DIR_som.R -hd 
+
+#Run the main script
+Rscript R/DIR_som.R -i Demo/Inputs/ReferenceCat.csv Demo/Inputs/TrainingCat.csv \
+                    -k z_phot z_spec MAG_u MAG_g MAG_r MAG_i MAG_g-MAG_r \
+                    -o Demo/Outputs/ \
+                    --som.dim 24 24 \
+                    -pp -sc 1 --force
+

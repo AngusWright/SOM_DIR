@@ -1,0 +1,12 @@
+#
+# Installation script for the SOM_DIR repo
+#
+
+The SOM_DIR repository houses primarily the DIR_som.R script, 
+which can be run directly from the command line given a functional 
+R installation. 
+
+The script automatically searches for, and installs, the required 
+R dependencies. However, you can also run the installation step by 
+running INSTALL.sh 
+
