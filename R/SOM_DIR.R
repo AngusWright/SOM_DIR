@@ -6,9 +6,9 @@
 
 #Function prints the help document /*fold*/{{{
 .help.print<-function() { 
-  cat(paste("\nDIR_som.R: script for creating DIR weights for an arbitrary survey\n",
+  cat(paste("\nSOM_DIR.R: script for creating DIR weights for an arbitrary survey\n",
             "Script calling Syntax:\n",
-            "Rscript DIR_som.R [options] -i <InputReferenceCat> <InputTrainingCat1> <InputTrainingCat2>...\n",
+            "Rscript SOM_DIR.R [options] -i <InputReferenceCat> <InputTrainingCat1> <InputTrainingCat2>...\n",
             "Available options:\n",
             "                -p : switch which create plots of the data and SOMs\n",
             "                -q : switch which causes the code to execute quietly (no prompts)\n",
@@ -45,7 +45,7 @@
 .default.print<-function() { 
   cat(paste("\ngenerate_randoms_2D.R: script for creating 2D randoms for an arbitrary survey geometry\n",
             "Script calling Syntax:\n",
-            "Rscript DIR_som.R [options] -i <InputReferenceCat> <InputTrainingCat1> <InputTrainingCat2>...\n",
+            "Rscript SOM_DIR.R [options] -i <InputReferenceCat> <InputTrainingCat1> <InputTrainingCat2>...\n",
             "Available option default values:\n",
             "                  -k : ALPHA_J2000 DELTA_J2000 THELI_NAME \n",
             "                  -l : `which ldactoasc`\n",
@@ -310,6 +310,8 @@ WtBuRd<-colorRampPalette(c('white',rev(brewer.pal(10,"RdBu")[-(5)])))
 #Read the options /*fold*/ {{{
 #Default parameter values /*fold*/ {{{
 only.som<-force<-sparse.som<-reuse<-useMult<-quiet<-FALSE
+optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
+optimize.z.threshold<-0.01
 loop.start<-plot<-0
 sparse.min.num<-1
 sparse.var<-NULL
@@ -317,8 +319,8 @@ seed<-666
 res<-200
 min.gal.per.core<-1000
 maxNAfrac=1
-detect.limit<-80
-missing.val<--99
+data.threshold<-c(0,80)
+data.missing<--99
 count.variable.r<-count.variable.t<-''
 ldac.options.1<-ldac.options.2<-''
 addstr<-''
@@ -336,8 +338,7 @@ som.method<-"pbatch"
 som.cores<-12
 som.rate<-c(0.05,0.01)
 ldactoasc<-""# system('which ldactoasc',intern=TRUE)
-catalogues<-NULL
-rescale<-TRUE
+train.catalogues<-NULL
 testing<-FALSE
 do.QC<-TRUE
 #/*fend*/}}}
@@ -372,32 +373,31 @@ while (length(inputs)!=0) {
     plot<-0
     inputs<-inputs[-1]
     #/*fend*/}}}
-  } else if (inputs[1]=='-r') {
-    #rescale input parameters /*fold*/ {{{
-    rescale<-TRUE
-    inputs<-inputs[-1]
-    #/*fend*/}}}
-  } else if (inputs[1]=='-nr') {
-    #do not rescale input parameters /*fold*/ {{{
-    rescale<-FALSE
-    inputs<-inputs[-1]
-    #/*fend*/}}}
   } else if (inputs[1]=='-as') {
     #read the addstring  /*fold*/ {{{
     inputs<-inputs[-1]
     addstr<-inputs[1]
     inputs<-inputs[-1]
     #/*fend*/}}}
-  } else if (inputs[1]=='-i') {
-    #Read the input catalogues /*fold*/ {{{
+  } else if (inputs[1]=='-r') {
+    #Read the input reference catalogue(s) /*fold*/ {{{
     inputs<-inputs[-1]
     if (any(grepl('^-',inputs))) { 
-      refr.catpath<-inputs[1:(which(grepl('^-',inputs))[1]-1)][1]
-      catalogues<-inputs[1:(which(grepl('^-',inputs))[1]-1)][-1]
+      refr.catalogues<-inputs[1:(which(grepl('^-',inputs))[1]-1)]
       inputs<-inputs[-(1:(which(grepl('^-',inputs))[1]-1))]
     } else { 
-      refr.catpath<-inputs[1]
-      catalogues<-inputs[-1]
+      refr.catalogues<-inputs
+      inputs<-NULL
+    } 
+    #/*fold*/}}}
+  } else if (inputs[1]=='-t') {
+    #Read the input training catalogue(s) /*fold*/ {{{
+    inputs<-inputs[-1]
+    if (any(grepl('^-',inputs))) { 
+      train.catalogues<-inputs[1:(which(grepl('^-',inputs))[1]-1)]
+      inputs<-inputs[-(1:(which(grepl('^-',inputs))[1]-1))]
+    } else { 
+      train.catalogues<-inputs
       inputs<-NULL
     } 
     #/*fend*/}}}
@@ -418,6 +418,13 @@ while (length(inputs)!=0) {
     do.QC<-FALSE
     warning("Not performing QC of clusters!") 
     #/*fend*/}}}
+  } else if (inputs[1]=='--zt.calib') {
+    #Read the quality control expressions /*fold*/ {{{
+    inputs<-inputs[-1]
+    zcalib.expr<-inputs[1]
+    do.zcalib<-TRUE
+    inputs<-inputs[-1]
+    #/*fend*/}}}
   } else if (inputs[1]=='-qc') {
     #Read the quality control expressions /*fold*/ {{{
     inputs<-inputs[-1]
@@ -432,22 +439,18 @@ while (length(inputs)!=0) {
     } else { 
       key.ids<-1:length(inputs)
     }
-    zr.label<-inputs[key.ids[2]]
-    zt.label<-inputs[key.ids[3]]
-    keys<-inputs[key.ids[c(-1,-2,-3)]]
+    keys<-inputs[key.ids[c(-1)]]
     inputs<-inputs[-(key.ids)]
     if (length(key.ids)<4) { 
       stop("There are no columns to group the data on!")
     } else if (length(key.ids)>=4) { 
       suppressWarnings(suppressPackageStartupMessages(require(kohonen)))
-      #factor.label<-keys[-(1:3)]
       factor.label<-keys
     } else { 
       stop(paste0("Catalogue Keywords must have length 3 or greater. It is ",length(key.ids),":-> ",keys," <-\n",
                   "i.e.:\n",
-                  "Rscript DIR_som.R -k z_ref Z_B MAG_GAAP_r -i <InputReferenceCat> <InputTrainingCat1> ...\n",
-                  "Rscript DIR_som.R -k z_ref Z_B MAG_GAAP_u MAG_GAAP_g MAG_GAAP_r MAG_GAAP_i -i <InputReferenceCat> <InputTrainingCat1> ...\n",
-                  "Rscript DIR_som.R -k z_ref Z_B MAG_GAAP_u MAG_GAAP_g MAG_GAAP_r MAG_GAAP_i MAG_GAAP_Z MAG_GAAP_Y MAG_GAAP_J MAG_GAAP_H MAG_GAAP_Ks -i <InputReferenceCat> <InputTrainingCat1> ...\n"))
+                  "Rscript SOM_DIR.R -k MAG_GAAP_u MAG_GAAP_g MAG_GAAP_r MAG_GAAP_i -r <InputReferenceCat> -t <InputTrainingCat1> ...\n",
+                  "Rscript SOM_DIR.R -k MAG_GAAP_u-MAG_GAAP_g MAG_GAAP_r-MAG_GAAP_i MAG_GAAP_Z-MAG_GAAP_Y MAG_GAAP_J-MAG_GAAP_H MAG_GAAP_r -r <InputReferenceCat> -t <InputTrainingCat1> ...\n"))
     }
     #Create the full keys string/*fold*/ {{{
     #keys<-paste(keys,collapse=' ')
@@ -495,6 +498,18 @@ while (length(inputs)!=0) {
     inputs<-inputs[-1]
     som.toroidal<-FALSE
     #/*fend*/}}}
+  } else if (inputs[1]=='--zt.label') {
+    #Define the z_spec label in the training catalogue /*fold*/ {{{
+    inputs<-inputs[-1]
+    zt.label<-inputs[1]
+    inputs<-inputs[-1]
+    #/*fend*/}}}
+  } else if (inputs[1]=='--zr.label') {
+    #Define the z_phot label in the training & reference catalogues /*fold*/ {{{
+    inputs<-inputs[-1]
+    zr.label<-inputs[1]
+    inputs<-inputs[-1]
+    #/*fend*/}}}
   } else if (inputs[1]=='--topo') {
     #Define whether the SOM is toroidal /*fold*/ {{{
     inputs<-inputs[-1]
@@ -504,7 +519,27 @@ while (length(inputs)!=0) {
       stop(paste0('SOM Topology must be "rectangular" or "hexagonal", not: ',som.topo))
     }
     #/*fend*/}}}
-  } else if (inputs[1]=='-t'|inputs[1]=='--toroidal') {
+  } else if (inputs[1]=='--train.flag') {
+    #Define whether the training weights should be output as a 0/1 flag /*fold*/ {{{
+    inputs<-inputs[-1]
+    train.flag<-TRUE
+    #/*fend*/}}}
+  } else if (inputs[1]=='--refr.flag') {
+    #Define whether the reference weights should be output as a 0/1 flag /*fold*/ {{{
+    inputs<-inputs[-1]
+    refr.flag<-TRUE
+    #/*fend*/}}}
+  } else if (inputs[1]=='--short.write') {
+    #Define whether the to write short catalogues /*fold*/ {{{
+    inputs<-inputs[-1]
+    short.write<-TRUE
+    #/*fend*/}}}
+  } else if (inputs[1]=='--optimise') {
+    #Define whether we want to optimise the number of HCs for representation /*fold*/ {{{
+    inputs<-inputs[-1]
+    optimise.HCs<-TRUE
+    #/*fend*/}}}
+  } else if (inputs[1]=='--toroidal') {
     #Define whether the SOM is toroidal /*fold*/ {{{
     inputs<-inputs[-1]
     som.toroidal<-TRUE
@@ -588,6 +623,13 @@ while (length(inputs)!=0) {
     som.iter<-as.numeric(inputs[1])
     inputs<-inputs[-1]
     #/*fend*/}}}
+  } else if (inputs[1]=='--data.threshold') {
+    #Define the SOM rate /*fold*/ {{{
+    inputs<-inputs[-1]
+    data.threshold<-as.numeric(inputs[1:2])
+    inputs<-inputs[-2:-1]
+    if (any(is.na(data.threshold))) { stop("data.threshold parameters are NA. For no thresholding, set --data.threshold -Inf Inf") }
+    #/*fend*/}}}
   } else if (inputs[1]=='--seed') {
     #Define the seed for SOM generation /*fold*/ {{{
     inputs<-inputs[-1]
@@ -636,18 +678,20 @@ while (length(inputs)!=0) {
 #/*fend*/}}}
 
 #Setup the QC expression {{{ 
-if (count.variable.t=="" & count.variable.r=="") { 
-  #Straight mean for train.cat and refr.cat
-  qc.expr<-"abs(mean(train.cat[[zt.label]])-mean(refr.cat[[zr.label]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
-} else if (count.variable.r=="") { 
-  #Weighted mean for train.cat & Straight mean for refr.cat 
-  qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-mean(refr.cat[[zr.label]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
-} else if (count.variable.t=="") { 
-  #Straight mean for train.cat & Weighted mean for refr.cat 
-  qc.expr<-"abs(mean(train.cat[[zt.label]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
-} else {
-  #Weighted mean for train.cat & Weighted mean for refr.cat 
-  qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+if (!exists("qc.expr")) {
+  if (count.variable.t=="" & count.variable.r=="") { 
+    #Straight mean for train.cat and refr.cat
+    qc.expr<-"abs(mean(train.cat[[zt.label]])-mean(refr.cat[[zr.label]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+  } else if (count.variable.r=="") { 
+    #Weighted mean for train.cat & Straight mean for refr.cat 
+    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-mean(refr.cat[[zr.label]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+  } else if (count.variable.t=="") { 
+    #Straight mean for train.cat & Weighted mean for refr.cat 
+    qc.expr<-"abs(mean(train.cat[[zt.label]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+  } else {
+    #Weighted mean for train.cat & Weighted mean for refr.cat 
+    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+  }
 }
 #}}}
 
@@ -658,20 +702,49 @@ if (!dir.exists(output.path)) {
 #/*fend*/}}}
 
 #Check for the input catalogues /*fold*/ {{{
-if (length(catalogues)==0) { 
-  stop("No catalogues provided! Call Syntax:\nRscript DIR_som.R [options] -i <InputReferenceCat> <InputTrainingCat1> ...") 
+n.catalogues<-max(length(train.catalogues),length(refr.catalogues))
+if (n.catalogues==0) { 
+  stop("No catalogues provided! Call Syntax:\nRscript SOM_DIR.R [options] -i <InputReferenceCat> <InputTrainingCat1> ...") 
 }
+#Make sure catalogue lists have matching length {{{
+if (length(train.catalogues)!=n.catalogues){ 
+  if (length(train.catalogues)==1) { 
+    train.catalogues<-rep(train.catalogues,n.catalogues)
+  } else if (length(refr.catalogues)%%length(train.catalogues)==0) { 
+    train.catalogues<-rep(train.catalogues,n.catalogues/length(train.catalogues))
+  } else { 
+    stop("Input training catalogue list is neither length 1, length(reference catalogue list), nor a factor of length(reference catalogue list)")
+  }
+}
+if (length(refr.catalogues)!=n.catalogues){ 
+  if (length(refr.catalogues)==1) { 
+    refr.catalogues<-rep(refr.catalogues,n.catalogues)
+  } else if (length(train.catalogues)%%length(refr.catalogues)==0) { 
+    refr.catalogues<-rep(refr.catalogues,n.catalogues/length(refr.catalogues))
+  } else { 
+    stop("Input reference catalogue list is neither length 1, length(reference catalogue list), nor a factor of length(reference catalogue list)")
+  }
+}
+#}}}
 #/*fend*/}}}
 
 #Prompt and start /*fold*/ {{{
 if (!quiet) { 
   cat("Creating DIR weights with input training catalogue(s):\n ") 
-  if (length(catalogues) > 5) { 
-    cat(paste0('  --> ',catalogues[1:3],'\n'))
+  if (n.catalogues > 5) { 
+    cat(paste0('  --> ',train.catalogues[1:3],'\n'))
     cat(paste0('  ....\n'))
-    cat(paste0('  --> ',rev(catalogues)[3:1],'\n'))
+    cat(paste0('  --> ',rev(train.catalogues)[3:1],'\n'))
   } else {
-    cat(paste0('  --> ',catalogues,'\n'))
+    cat(paste0('  --> ',train.catalogues,'\n'))
+  }
+  cat("And corresponding input reference catalogue(s):\n ") 
+  if (n.catalogues > 5) { 
+    cat(paste0('  --> ',refr.catalogues[1:3],'\n'))
+    cat(paste0('  ....\n'))
+    cat(paste0('  --> ',rev(refr.catalogues)[3:1],'\n'))
+  } else {
+    cat(paste0('  --> ',refr.catalogues,'\n'))
   }
 }
 #/*fend*/}}}
@@ -683,87 +756,18 @@ set.seed(seed)
 #Initialise loop counters /*fold*/ {{{
 io.clock<-0
 loop.num<-loop.start-1 #this is just here for name convenience when the pipe errors
-loop.length<-length(catalogues)+loop.start-1
+loop.length<-n.catalogues+loop.start-1
 #/*fend*/}}}
 
-#Read in the input catalogue /*fold*/ {{{
-if (!quiet) { 
-  cat(paste("  > Reading Reference Catalogue")) 
-  timer<-proc.time()[3]
-}
-refr.cat<-helpRfuncs::read.file(refr.catpath)
-#Read Reference cat (Old) {{{
-#if (grepl('.cat',refr.catpath,fixed=T)) { 
-#  if (!quiet) { cat(" (with ldactoasc):\n\n") }
-#  refr.cat<-try(read.ldac(refr.catpath,ldactoasc=ldactoasc,data.table=TRUE,
-#                     diagnostic=TRUE ,options=paste('-s',keys,zr.label,count.variable.r,ldac.options.1),force=TRUE,clean=TRUE,showProgress=FALSE),silent=TRUE)
-#  if (suppressWarnings(class(refr.cat)=='try-error')) { 
-#    cat(" - ")
-#    stop(paste0("Failure to read input catalogue. Check your ldactoasc binary?\n",
-#                "  NB: We assume that input \'.cat\' files are in LDAC format. Table details can be specified at input.\n",
-#                "  For other formats we use: .fits (FITS standard); .csv/.asc (CSV,TSV,ASCII); .Rdata (R data file)\n"))
-#  }
-#  if (!quiet) { cat("\n  -----> Completed!\n") }
-#} else if (grepl('.Rdata',refr.catpath,fixed=T)) {
-#  nam<-try(load(refr.catpath),silent=TRUE)
-#  if (suppressWarnings(class(nam)=='try-error')) { 
-#    cat(" - ")
-#    stop(paste0("Failure to load input Rdata catalogue.\n"))
-#  }
-#  if (nam=="nam") {
-#    #Whoops, we overwrote the catalogue while checking its name! 
-#    load(refr.catpath)
-#    refr.cat<-nam
-#    rm('nam')
-#    #
-#  } else if (nam!="refr.cat") { 
-#    refr.cat<-get(nam)
-#    rm(nam)
-#  } 
-#} else if (grepl('.fits',refr.catpath,fixed=T)) {
-#  refr.cat<-try(Rfits::Rfits_read_table(refr.catpath,data.table=TRUE),silent=TRUE)
-#  if (suppressWarnings(class(refr.cat)=='try-error')) { 
-#    refr.cat<-try(read.fits.cat(refr.catpath,data.table=TRUE),silent=TRUE)
-#    if (suppressWarnings(class(refr.cat)=='try-error')) { 
-#      cat(" - ")
-#      stop(paste0("Failure to read input fits catalogue.\n"))
-#    }
-#  }
-#} else if (grepl('.csv',refr.catpath,fixed=T) | grepl('.asc',refr.catpath,fixed=T)) {
-#  refr.cat<-try(fread(refr.catpath,data.table=TRUE,showProgress=FALSE),silent=TRUE)
-#  if (suppressWarnings(class(refr.cat)=='try-error')) { 
-#    cat(" - ")
-#    stop(paste0("Failure to read input CSV catalogue.\n"))
-#  }
-#} else { 
-#  cat(" - ")
-#  stop(paste0("Failure to read input catalogue. Unknown file type. Expects .cat for ldac, .fits for binary, or .csv\n"))
-#}
+for (catpath.count in 1:n.catalogues) { 
+#Define the training and reference catalogue paths {{{
+train.catpath<-train.catalogues[catpath.count]
+refr.catpath<-refr.catalogues[catpath.count]
 #}}}
-#Make sure that the table is a data.table
-if (!is.data.table(refr.cat)){ 
-  refr.cat<-as.data.table(refr.cat)
-}
-if (testing) {
-  refr.cat<-refr.cat[runif(nrow(refr.cat))<0.2,]
-}
-#Catalogue length
-refr.cat.len<-nrow(refr.cat)
-if (!quiet) { 
-  io.clock<-io.clock+proc.time()[3]-timer
-  cat(paste(" - Done",as.time(proc.time()[3]-timer,digits=0),"\n"))
-  if (testing) { 
-    cat("  # Running in Testing mode! Many parameters degraded to improve speed (--som.dim) #\n")
-  }
-}
-
-#/*fend*/}}}
-
-for (train.catpath in catalogues) { 
 #Loop through catalogues /*fold*/ {{{
 loop.num<-loop.num+1
 #Get the catalogue name and ending from the catalogue path given #/*fold*/ {{{
-if (!quiet) { cat(paste("Working on Catalogue:",train.catpath,"\n")) }
+if (!quiet) { cat(paste("Working on Catalogues:\n    ",train.catpath,"\n    ",refr.catpath,"\n")) }
 train.catnam<-rev(strsplit(train.catpath,'/')[[1]])[1]
 train.ending<-rev(strsplit(train.catnam,'.',fixed=TRUE)[[1]])[1]
 #Check for the output catalogues /*fold*/ {{{
@@ -779,7 +783,7 @@ if (!exists('output.file')) {
                    '_pl_',length(factor.label)-print.length)
   }
   #/*fend*/}}}
-} else if (length(output.file)!=length(catalogues)) { 
+} else if (length(output.file)!=n.catalogues) { 
   addstr<-paste0("_",loop.num)
 }
 output.ending<-rev(strsplit(output.file,'.',fixed=TRUE)[[1]])[1]
@@ -788,9 +792,14 @@ output.ending<-rev(strsplit(output.file,'.',fixed=TRUE)[[1]])[1]
 
 #Check if the output catalogue already exists /*fold*/ {{{
 if (grepl('.cat',output.file,fixed=T)) {
-  #Output an LDAC catalogue /*fold*/ {{{
-  file =paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.cat'),output.file,fixed=TRUE))
-  file2=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.cat'),output.file,fixed=TRUE))
+  #Output an FITS catalogue /*fold*/ {{{
+  file =paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.fits'),output.file,fixed=TRUE))
+  file2=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.fits'),output.file,fixed=TRUE))
+  #/*fend*/}}}
+} else if (grepl('.fits',output.file,fixed=T)) {
+  #Output an fits catalogue /*fold*/ {{{
+  file =paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.fits'),output.file,fixed=TRUE))
+  file2=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.fits'),output.file,fixed=TRUE))
   #/*fend*/}}}
 } else if (grepl('.Rdata',output.file,fixed=T)) {
   #Output an Rdata catalogue /*fold*/ {{{
@@ -803,7 +812,8 @@ if (grepl('.cat',output.file,fixed=T)) {
   file2=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.csv'),output.file,fixed=TRUE))
   #/*fend*/}}}
 }
-if (file.exists(file) & file.exists(file2)) { 
+somfile<-paste0(output.path,'/',sub(paste0('.',output.ending),paste0(addstr,'_SOMdata.Rdata'),output.file,fixed=TRUE))
+if (file.exists(file) & file.exists(file2) | (only.som & file.exists(somfile))) { 
   if (!force) { 
     cat("  ### Output Catalogues already exist! Not using [--force], so skipping! ###\n")
     next
@@ -813,12 +823,19 @@ if (file.exists(file) & file.exists(file2)) {
 }
 #/*fend*/}}}
 
-#Read in the input catalogue /*fold*/ {{{
-if (!quiet) { 
-  cat(paste("  > Reading Training Catalogue")) 
-  timer<-proc.time()[3]
+#Read in the input training catalogue /*fold*/ {{{
+if (catpath.count!=1 && train.catalogues[catpath.count-1]!=train.catpath) { 
+  if (!quiet) { 
+    cat(paste("  > Skipping Training Catalogue Read (same as previous loop!)")) 
+    timer<-proc.time()[3]
+  }
+} else { 
+  if (!quiet) { 
+    cat(paste("  > Reading Training Catalogue")) 
+    timer<-proc.time()[3]
+  }
+  train.cat<-read.file(train.catpath)
 }
-train.cat<-read.file(train.catpath)
 if (nrow(train.cat)==0) { 
   #The training catalogue is empty?!
   stop(paste0("Training catalogue was read successfully but has no rows!\n"))
@@ -845,16 +862,39 @@ if (!quiet) {
 #/*fend*/}}}
 #/*fend*/}}}
 
-#Generate the DIR wieights /*fold*/ {{{
-#Check the number of HCs /*fold*/ {{{
-if (factor.nbins>=som.dim[1]*som.dim[2]) { 
+#Read in the input reference catalogue /*fold*/ {{{
+if (catpath.count!=1 && refr.catalogues[catpath.count-1]!=refr.catpath) { 
   if (!quiet) { 
-    cat("  # WARNING: Number of hierarchical clusters is >= number of SOM cells!           #\n")
-    cat("  #          We will not use the hierarchical clustering, just split by SOM cell! #\n")
+    cat(paste("  > Skipping Reference Catalogue Read (same as previous loop!)")) 
+    timer<-proc.time()[3]
   }
-  factor.nbins<-som.dim[1]*som.dim[2]
+} else { 
+  if (!quiet) { 
+    cat(paste("  > Reading Reference Catalogue")) 
+    timer<-proc.time()[3]
+  }
+  refr.cat<-read.file(refr.catpath)
 }
+#Make sure that the table is a data.table
+if (!is.data.table(refr.cat)){ 
+  refr.cat<-as.data.table(refr.cat)
+}
+if (testing) {
+  refr.cat<-refr.cat[runif(nrow(refr.cat))<0.2,]
+}
+#Catalogue length
+refr.cat.len<-nrow(refr.cat)
+if (!quiet) { 
+  io.clock<-io.clock+proc.time()[3]-timer
+  cat(paste(" - Done",as.time(proc.time()[3]-timer,digits=0),"\n"))
+  if (testing) { 
+    cat("  # Running in Testing mode! Many parameters degraded to improve speed (--som.dim) #\n")
+  }
+}
+
 #/*fend*/}}}
+
+#Generate the DIR wieights /*fold*/ {{{
 #Notify /*fold*/ {{{
 if (!quiet) { 
   cat(paste("  > Generating the SOM from Training catalogue "))
@@ -896,6 +936,7 @@ if (length(factor.label)<2) {
     if (name!="train.som") { 
       train.som<-get(name)
     }
+    som.dim<-c(train.som$grid$xdim,train.som$grid$ydim)
     #/*fend*/}}}
     #Notify /*fold*/ {{{
     if (!quiet) { 
@@ -903,23 +944,31 @@ if (length(factor.label)<2) {
       short.timer<-proc.time()[3]
       cat("\n    -> passing training set into previous SOM (!!)")
     }#/*fend*/}}}
+    #Check for previous SOM versions {{{
+    if (length(train.som$whiten.param)==0 & length(train.som$rescale.param)!=0) { 
+      warning("Updating SOM file to current style: rescale.param->whiten.param")
+      train.som$whiten.param<-train.som$rescale.param
+    } else if (length(train.som$whiten.param)==0) { 
+      stop("SOM has no whitening parameters")
+    }
+    #}}}
     #Get the data positions from the trained SOM /*fold*/ {{{
-    train.som<-kohparse(som=train.som,data=train.cat,train.var.expr=factor.label,data.missing=data.missing,data.threshold=data.threshold,
-                        quiet=quiet,n.cores=som.cores,max.na.frac=1)
+    train.som<-kohparse(som=train.som,data=train.cat,train.expr=factor.label,data.missing=data.missing,data.threshold=data.threshold,
+                        n.cores=som.cores,max.na.frac=1,quiet=TRUE)
     #/*fend*/}}}
     #/*fend*/}}}
   } else { 
     #Construct a new SOM /*fold*/ {{{
     #If we wanted to reuse, stop with error /*fold*/ {{{
     if (reuse) { 
-      stop("SOM data file does not exist! Cannot use previous SOM!")
+      stop("SOM data file does not exist! Cannot use previous SOM!\n",som.data.file)
     }
     #/*fend*/}}}
     #Run the training /*fold*/ {{{
     train.som<-kohtrain(data=train.cat,train.expr=factor.label,som.dim=som.dim,som.topo=som.topo,
                         som.toroidal=som.toroidal,som.iter=som.iter,som.rate=som.rate,n.cores=som.cores,
                         train.sparse=sparse.som,sparse.min.density=sparse.min.density,sparse.var=sparse.var,
-                        data.missing=data.missing,data.threshold=data.threshold,quiet=quiet)
+                        data.missing=data.missing,data.threshold=data.threshold,quiet=quiet,seed=seed)
     #/*fend*/}}}
     #If we removed training rows because of NAs and/or sparsity, update the prediction /*fold*/ {{{
     if (length(train.som$unit.classif)!=nrow(train.cat)) {
@@ -932,8 +981,8 @@ if (length(factor.label)<2) {
       }
       #/*fend*/}}}
       #Get the data positions from the trained SOM /*fold*/ {{{
-      train.som<-kohparse(som=train.som,data=train.cat,train.var.expr=factor.label,data.missing=data.missing,data.threshold=data.threshold,
-                          quiet=quiet,n.cores=som.cores,max.na.frac=1)
+      train.som<-kohparse(som=train.som,data=train.cat,train.expr=factor.label,data.missing=data.missing,data.threshold=data.threshold,
+                          n.cores=som.cores,max.na.frac=1,quiet=TRUE)
       #/*fend*/}}}
     }
     #/*fend*/}}}
@@ -947,7 +996,7 @@ if (length(factor.label)<2) {
         cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
         short.timer<-proc.time()[3]
         cat("\n    -> Skipping remaining loop because '--only.som' flag was set!")
-        cat("\n       (In the future, you could just use the kohtrain function directly)")
+        cat("\n       (In the future, you could just use the kohtrain function directly)\n")
         next
       }#/*fend*/}}}
     }
@@ -965,7 +1014,7 @@ if (length(factor.label)<2) {
     }#/*fend*/}}}
     #Plot the som codes /*fold*/ {{{
     png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_SOM_codes.png',output.file,fixed=TRUE)),height=10*res,width=10*res,res=res)
-    plot(train.som, type="codes", bgcol=rainbow(factor.nbins)[train.hc],shape='straight',codeRendering='lines',border=NA)
+    plot(train.som, type="codes",shape='straight',codeRendering='lines',border=NA)
     add.cluster.boundaries(train.som,train.hc,lwd=3,col=hsv(1,0,0,0.8))
     dev.off()
     #/*fend*/}}}
@@ -1024,12 +1073,20 @@ if (!quiet) {
   short.timer<-proc.time()[3]
   cat("\n    -> Clustering the SOM cells")
 }#/*fend*/}}}
+#Check the number of HCs /*fold*/ {{{
+if (factor.nbins>=prod(som.dim)) { 
+  if (!quiet) { 
+    cat("\n  # WARNING: Number of hierarchical clusters is >= number of SOM cells!           #\n")
+    cat("  #          We will not use the hierarchical clustering, just split by SOM cell! #\n")
+    cat("\n    -> Contining with clustering")
+  }
+  factor.nbins<-prod(som.dim)
+}
+#/*fend*/}}}
 #Get the training positions from the trained SOM /*fold*/ {{{
 train.som<-generate.kohgroups(som=train.som,n.cluster.bins=factor.nbins,
-                             train.var.expr=factor.label,data.missing=data.missing,
-                             data.threshold=data.threshold,quiet=quiet,n.cores=som.cores,max.na.frac=1)
-train.cat$GroupFactor<-train.som$clust.classif
-save(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0(addstr,'_refr_SOMdata.Rdata'),output.file,fixed=TRUE)),refr.som)
+                             train.expr=factor.label,data.missing=data.missing,
+                             data.threshold=data.threshold,n.cores=som.cores,max.na.frac=1,quiet=TRUE)
 #/*fend*/}}}
 #Notify /*fold*/ {{{
 if (!quiet) { 
@@ -1039,11 +1096,181 @@ if (!quiet) {
 }#/*fend*/}}}
 #Get the data positions from the trained SOM /*fold*/ {{{
 refr.som<-generate.kohgroups(som=train.som,n.cluster.bins=factor.nbins,new.data=refr.cat,
-                             train.var.expr=factor.label,data.missing=data.missing,
-                             data.threshold=data.threshold,quiet=quiet,n.cores=som.cores,max.na.frac=1)
+                             train.expr=factor.label,data.missing=data.missing,
+                             data.threshold=data.threshold,n.cores=som.cores,max.na.frac=1,quiet=TRUE)
+#/*fend*/}}}
+#Optimise the number of HCs? /*fold*/ {{{
+if (optimise.HCs) { 
+  #Define the HC.steps {{{
+  HC.steps<-ceiling(seq(factor.nbins*0.01,factor.nbins,length=100))
+  HC.steps<-HC.steps[which(!duplicated(HC.steps))]
+  #}}}
+  #Notify {{{
+  if (!quiet) { 
+    cat(paste(" - Pausing",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat(paste("\n    -> Optimising number of heirarchical clusters"))
+    cat(paste("\n    -> constructing",length(HC.steps),"sets of hierarchical clusters"))
+  }#}}}
+  #Cut the cluster dendrogram at the required cluster numbers {{{
+  if (is.null(train.som$hclust)) {
+    train.hc.mat = cutree(hclust(dist(train.som$codes[[1]])), as.numeric(HC.steps))
+  } else {
+    train.hc.mat = cutree(train.clust, as.numeric(HC.steps))
+  }
+  #}}}
+  #Notify {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Dispersing training data into cluster bins")
+  }#}}}
+  #Sort the training data into the hierarchical clusters {{{
+  #Get the individual data-to-SOMcell IDs {{{
+  classif<-replicate(length(HC.steps),train.som$unit.classif)
+  ij<-as.matrix(expand.grid(seq(nrow(classif)),seq(ncol(classif)))); 
+  #}}}
+  #Convert the IDs from data-to-SOMcell into data-to-cluster {{{
+  train.somclust<-array(train.hc.mat[cbind(classif[ij],col(classif)[ij])],dim=dim(classif))
+  #}}}
+  #}}}
+  #Notify {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Dispersing reference data into cluster bins")
+  }#}}}
+  #Sort the refr data into the hierarchical clusters {{{
+  #Get the individual data-to-SOMcell IDs {{{
+  classif<-replicate(length(HC.steps),refr.som$unit.classif)
+  ij<-as.matrix(expand.grid(seq(nrow(classif)),seq(ncol(classif)))); 
+  #}}}
+  #Convert the IDs from data-to-SOMcell into data-to-cluster {{{
+  refr.somclust<-array(train.hc.mat[cbind(classif[ij],col(classif)[ij])],dim=dim(classif))
+  #}}}
+  #}}}
+  #Notify {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Generating the SOM DIR weights: ")
+  }
+  #}}}
+  #Reference counts {{{
+  if (!quiet) { 
+    cat("\n       -Reference counts per cluster")
+  }
+  if (count.variable.r=='') { 
+    ct.refr<-matrixStats::colTabulates(refr.somclust,values=1:max(HC.steps))
+  } else { 
+    if (nrow(refr.somclust)!=nrow(refr.cat)) { 
+      stop(paste("somclust and catalogue for reference are of different lengths?!\n",
+           nrow(refr.somclust),"!=",nrow(refr.cat),'\n'))
+    }
+    debug(colWeightedTabulates)
+    ct.refr<-colWeightedTabulates(refr.somclust,w=refr.cat[[count.variable.r]],values=1:max(HC.steps),cores=som.cores)
+  } 
+  if (any(dim(ct.refr)!=c(length(HC.steps),max(HC.steps)))) { 
+    stop(paste0("\nReference Counts is not of expected length; likely failure in parallelisation!\n",
+         "{",paste(dim(ct.refr),collapse='x'),"} != {",length(HC.steps),"x",max(HC.steps)))
+  }
+  #}}}
+  #Training counts {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n       -Training counts per cluster")
+  }
+  if (count.variable.t=='') { 
+    ct.train<-matrixStats::colTabulates(train.somclust,values=1:max(HC.steps))
+  } else {
+    if (nrow(train.somclust)!=nrow(train.cat)) { 
+      stop(paste("somclust and catalogue for training are of different lengths?!\n",
+           nrow(train.somclust),"!=",nrow(train.cat),'\n'))
+    }
+    ct.train<-colWeightedTabulates(train.somclust,w=train.cat[[count.variable.t]],values=1:max(HC.steps))
+  }
+  #}}}
+  #Training mean zs {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n       -Training <z> per cluster")
+  }
+  muz.train<-colWeightedTabulates(train.somclust,w=train.cat[[zt.label]],values=1:max(HC.steps))/ct.train
+  #}}}
+  #Cluster Weights {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n       -Training weights per cluster")
+  }
+  print(str(ct.refr))
+  print(str(ct.train))
+  wt.final<-ct.refr/ct.train
+  wt.final[which(!is.finite(wt.final))]<-0
+  #}}}
+  #Apply the QC {{{
+  #wt.final[which(QC.fail)]<-0
+  #}}}
+  #Calculate the mean-z for each HC step {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n       -Change in mean-z a.f.o. cluster")
+  }
+  muz<-rowSums(ct.train*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*wt.final,na.rm=TRUE)
+  #}}}
+  #Select the optimal HC step {{{
+  muz.fiducial<-muz[which(HC.steps==factor.nbins)]
+  HCs.possible<-HC.steps[which(abs(muz-muz.fiducial)<=optimize.z.threshold)]
+  HC.optimal<-min(HCs.possible)
+  muz.optimal<-muz[which(HC.steps==HC.optimal)]
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat(paste0("\n       -mean-z range: <z> in [",paste(round(digits=3,range(muz,na.rm=T)),collapse=','),"]"))
+    cat(paste0("\n       -Fiducial mu_z: <z> = ",round(digits=3,muz.fiducial)," @ factor.nbins = ",factor.nbins))
+    cat(paste0("\n       -Optimal mu_z:  <z> = ",round(digits=3,muz.optimal)," @ factor.nbins = ",HC.optimal))
+    cat(paste0("\n       -Updating training and reference cluster assignments with factor.nbins = ",HC.optimal))
+  }
+  #}}}
+  #Update the factor.nbins, and cluster assignments {{{
+  factor.nbins<-HC.optimal
+  #Notify /*fold*/ {{{
+  if (!quiet) { 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Re-assigning the training data to clusters")
+  }#/*fend*/}}}
+  #Get the training positions from the trained SOM /*fold*/ {{{
+  train.som<-generate.kohgroups(som=train.som,n.cluster.bins=factor.nbins,
+                               train.expr=factor.label,data.missing=data.missing,
+                               data.threshold=data.threshold,n.cores=som.cores,max.na.frac=1,quiet=TRUE)
+  #/*fend*/}}}
+  #Notify /*fold*/ {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Re-assigning the reference data to clusters")
+  }#/*fend*/}}}
+  #Get the data positions from the trained SOM /*fold*/ {{{
+  refr.som<-generate.kohgroups(som=refr.som,n.cluster.bins=factor.nbins,
+                               train.expr=factor.label,data.missing=data.missing,
+                               data.threshold=data.threshold,n.cores=som.cores,max.na.frac=1,quiet=TRUE)
+  #/*fend*/}}}
+  #}}}
+}
+#/*fend*/}}}
+#Record the cluster assignments and write the SOMs to file {{{
+#Training Catalogue {{{
+train.cat$GroupFactor<-train.som$clust.classif
+save(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0(addstr,'_SOMdata.Rdata'),output.file,fixed=TRUE)),train.som)
+#}}}
+#Reference Catalogue {{{
 refr.cat$GroupFactor<-refr.som$clust.classif
 save(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0(addstr,'_refr_SOMdata.Rdata'),output.file,fixed=TRUE)),refr.som)
-#/*fend*/}}}
+#}}}
+#}}}
 #Plot the SOM and additional information /*fold*/ {{{
 if (plot>0) { 
   #Notify /*fold*/ {{{
@@ -1115,108 +1342,6 @@ if (!quiet) {
   cat("\n    -> Generating the SOM DIR weights ")
 }
 #/*fend*/}}}
-#Perform SOM QC {{{
-if (do.QC) { 
-  #Notify /*fold*/ {{{
-  if (!quiet) { 
-    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-    short.timer<-proc.time()[3]
-    cat("\n    -> Performing SOM Cluster QC ")
-  }
-  #/*fend*/}}}
-  #Check the qc expression for errors {{{ 
-  if (grepl("count.variable.t",qc.expr)&count.variable.t=='') { 
-    stop("count.variable.t is not defined but is used in the cluster QC")
-  }
-  if (grepl("count.variable.r",qc.expr)&count.variable.r=='') { 
-    stop("count.variable.r is not defined but is used in the cluster QC")
-  }
-  #}}}
-  #Run the QC expression per-group {{{
-    #Seperate the QC expression into individual terms {{{
-    split.expr<-split.expr(qc.expr)
-    #Check for expression errors {{{
-    if (any(grepl("train.cat",split.expr$components)&grepl("refr.cat",split.expr$components))) { 
-      stop("QC expression attempts to combine train.cat and refr.cat catalogues (of different lengths!)")
-    }
-    #}}}
-    train.expression<-split.expr$components[which(grepl("train.cat",split.expr$components))]
-    refr.expression<-split.expr$components[which(grepl("refr.cat",split.expr$components))]
-    #}}}
-    #Convert the train & refr cat names to 'data' {{{
-    train.expression<-gsub('train.cat','data',train.expression)
-    refr.expression<-gsub('refr.cat','data',refr.expression)
-    #}}}
-    #Compute the training cat and reference cat QC {{{
-    qc.frame<-NULL
-    if (any(grepl("train.cat",split.expr$components))) {
-      #Run the training cat QC components {{{
-      train.qc.vals<-generate.kohgroup.property(som=train.som,data=train.cat,
-                                                expression=train.expression,
-                                                expr.label=names(train.expression),
-                                                n.cores=som.cores,n.cluster.bins=factor.nbins)
-      #}}}
-      #Add to the QC frame {{{
-      qc.frame<-as.data.table(train.qc.vals$property)
-      #}}}
-    }
-    if (any(grepl("refr.cat",split.expr$components))) {
-      #Run the reference cat QC components {{{
-      refr.qc.vals<-generate.kohgroup.property(som=refr.som,data=train.cat,
-                                               expression=refr.expression,
-                                               expr.label=names(refr.expression),
-                                               n.cores=som.cores,n.cluster.bins=factor.nbins)
-      #}}}
-      #Add to the QC frame {{{
-      if (is.null(qc.frame)) { 
-        qc.frame<-as.data.table(refr.qc.vals$property)
-      } else { 
-        qc.frame<-as.data.table(cbind(qc.frame,refr.qc.vals$property[,-which(colnames(refr.qc.vals$property=='group.id'))]))
-      }
-      #}}}
-    }
-    #}}}
-    #Run the QC expression {{{
-    qc.res.expr<-paste0("data.frame(group.id=group.id,QCeval=",split.expr$replace.expr,")")
-    qc.result<-qc.frame[,eval(parse(text=qc.res.expr))]
-    #}}}
-  #}}}
-  #Check that the QC is a logical {{{ 
-  if (any(!is.logical(qc.result$QCeval))) { 
-    #Write QC values to catalogue {{{
-    warning("Result of QC was not interpretable as logical!\nQC values will be output but not applied!!")
-    if (!quiet) { 
-      cat(" - WARNING: QC output is not logical! QC will not be applied!!")
-      cat("\n    -> Writing SOM QC results to output catalogues ")
-    }
-    refr.cat$GroupQC<-train.cat$GroupQC<-NA
-    for (i in 1:factor.nbins) { 
-      train.cat$GroupQC[which(train.cat$GroupFactor==i)]<-qc.result$QCeval[which(qc.result$group.id==i)]
-      refr.cat$GroupQC[which(refr.cat$GroupFactor==i)]<-qc.result$QCeval[which(qc.result$group.id==i)]
-    }
-    #}}}
-  } else { 
-    #Apply the QC to catalogue {{{
-    if (!quiet) { 
-      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-      short.timer<-proc.time()[3]
-      cat("\n    -> Assigning QC results to sources ")
-    }
-    goodgroups<-qc.result$group.id[which(qc.result$QCeval)]
-    train.cat$GroupFactor[which(!train.cat$GroupFactor%in%goodgroups)]<-NA
-    refr.cat$GroupFactor[which(!refr.cat$GroupFactor%in%goodgroups)]<-NA
-    #}}}
-  }
-  #}}}
-}
-#}}}
-#Notify /*fold*/ {{{
-if (!quiet) { 
-  cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-  short.timer<-proc.time()[3]
-  cat("\n    -> Generating the SOM DIR weights ")
-}
-#/*fend*/}}}
 #Generate the weights /*fold*/ {{{
 if (count.variable.r=='' & count.variable.t=='') { 
   wtind<-foreach(i=1:factor.nbins,.combine=rbind,.inorder=TRUE)%dopar%{
@@ -1247,8 +1372,18 @@ if (count.variable.r=='' & count.variable.t=='') {
     return=cbind(i,wt)
   }
 } 
+#Define the SOM weights {{{
 train.cat[["SOMweight"]]<-wtind[train.cat$GroupFactor,2]
-refr.cat[["SOMweight"]]<-ifelse(is.finite(wtind[refr.cat$GroupFactor,2]),1,0)
+refr.cat[["SOMweight"]]<-1/wtind[refr.cat$GroupFactor,2]
+if (train.flag) { 
+  train.cat[["SOMweight"]][which(!is.finite(train.cat[["SOMweight"]]))]<-0
+  train.cat[["SOMweight"]]<-ifelse(train.cat[["SOMweight"]]>0,1,0)
+}
+if (refr.flag) { 
+  refr.cat[["SOMweight"]][which(!is.finite(refr.cat[["SOMweight"]]))]<-0
+  refr.cat[["SOMweight"]]<-ifelse(refr.cat[["SOMweight"]]>0,1,0)
+}
+#}}}
 #Plot the SOM weights /*fold*/ {{{
 if (plot>0) {
   png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_train_SOMweights.png',output.file,fixed=TRUE)),height=5*res,width=5*res,res=res)
@@ -1282,6 +1417,325 @@ if (plot>0) {
 #/*fend*/}}}
 #/*fend*/}}}
 #/*fend*/}}} 
+#Perform SOM z calibration {{{
+if (do.zcalib) { 
+  #Notify /*fold*/ {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Performing SOM z calibration ")
+  }
+  #/*fend*/}}}
+  #Check the zcalib expression for errors {{{ 
+  if (grepl("count.variable.t",zcalib.expr)&count.variable.t=='') { 
+    stop("count.variable.t is not defined but is used in the cluster z calibration")
+  }
+  if (grepl("count.variable.r",zcalib.expr)&count.variable.r=='') { 
+    stop("count.variable.r is not defined but is used in the cluster z calibration")
+  }
+  if (count.variable.t!=''&!count.variable.t%in%colnames(train.cat)) { 
+    stop("count.variable.t is defined but is not present in the training catalogue!")
+  }
+  if (count.variable.r!=''&!count.variable.r%in%colnames(refr.cat)) { 
+    stop("count.variable.r is defined but is not present in the reference catalogue!")
+  }
+  if (zt.label!=''&!zt.label%in%colnames(train.cat)) { 
+    stop("zt.label is defined but is not present in the training catalogue!")
+  }
+  if (zr.label!=''&!zr.label%in%colnames(refr.cat)) { 
+    stop("zr.label is defined but is not present in the reference catalogue!")
+  }
+  #}}}
+  #Run the zcalib expression per-group {{{
+  #Seperate the zcalib expression into individual terms {{{
+  split.expr<-split.expr(zcalib.expr,ignore=c('abs','sqrt',',na.rm'))
+  split.names<-names(split.expr$components)
+  keep<-rep(TRUE,length(split.names))
+  for (ind in 1:length(split.names)) { 
+    keep[ind]<-grepl(split.names[ind],split.expr$replace.expr)
+  }
+  split.expr$components<-split.expr$components[keep]
+  #Check for expression errors {{{
+  if (any(grepl("train.cat",split.expr$components)&grepl("refr.cat",split.expr$components))) { 
+    stop("zcalib expression attempts to combine train.cat and refr.cat catalogues (of different lengths!)")
+  }
+  #}}}
+  train.expression<-split.expr$components[which(grepl("train.cat",split.expr$components)&
+                                               !grepl("full.train",split.expr$components))]
+  refr.expression<-split.expr$components[which(grepl("refr.cat",split.expr$components)&
+                                              !grepl("full.refr",split.expr$components))]
+  full.train.expression<-split.expr$components[which(grepl("full.train",split.expr$components))]
+  full.refr.expression<-split.expr$components[which(grepl("full.refr",split.expr$components))]
+  #}}}
+  #Convert the train & refr cat names to 'data' {{{
+  train.expression<-gsub('train.cat','data',train.expression)
+  refr.expression<-gsub('refr.cat','data',refr.expression)
+  full.train.expression<-gsub('full.train.cat','train.cat',full.train.expression)
+  full.refr.expression<-gsub('full.refr.cat','refr.cat',full.refr.expression)
+  #}}}
+  #Compute the training cat and reference cat z calibration {{{
+  zcalib.frame<-NULL
+  if (any(grepl("train.cat",split.expr$components))) {
+    #Run the training cat z calibration components {{{
+    train.zcalib.vals<-generate.kohgroup.property(som=train.som,data=train.cat,
+                                              expression=train.expression,
+                                              expr.label=names(train.expression),
+                                              n.cores=som.cores,n.cluster.bins=factor.nbins,quiet=TRUE)
+    #}}}
+    #Add to the z calibration frame {{{
+    zcalib.frame<-as.data.table(train.zcalib.vals$property)
+    #}}}
+  }
+  if (any(grepl("refr.cat",split.expr$components))) {
+    #Run the reference cat z calibration components {{{
+    refr.zcalib.vals<-generate.kohgroup.property(som=refr.som,data=refr.cat,
+                                             expression=refr.expression,
+                                             expr.label=names(refr.expression),
+                                             n.cores=som.cores,n.cluster.bins=factor.nbins,quiet=TRUE)
+    #}}}
+    #Add to the z calibration frame {{{
+    if (is.null(zcalib.frame)) { 
+      zcalib.frame<-as.data.table(refr.zcalib.vals$property)
+    } else { 
+      zcalib.frame<-as.data.table(cbind(zcalib.frame,refr.zcalib.vals$property[,-which(colnames(refr.zcalib.vals$property)=='group.id')]))
+    }
+    #}}}
+  }
+  if (any(grepl("full.train",split.expr$components))) {
+    #Run the training cat z calibration components {{{
+    full.train.zcalib.vals<-NULL
+    for (expr in full.train.expression) {
+      full.train.zcalib.vals<-cbind(full.train.zcalib.vals,eval(parse(text=expr)))
+    }
+    colnames(full.train.zcalib.vals)<-names(split.expr$components)[which(grepl("full.train",split.expr$components))]
+    #}}}
+    #Add to the z calibration frame {{{
+    zcalib.frame<-as.data.table(cbind(zcalib.frame,full.train.zcalib.vals))
+    #}}}
+  }
+  if (any(grepl("full.refr",split.expr$components))) {
+    #Run the reference cat z calibration components {{{
+    full.refr.zcalib.vals<-NULL
+    for (expr in full.refr.expression) {
+      full.refr.zcalib.vals<-cbind(full.refr.zcalib.vals,eval(parse(text=expr)))
+    }
+    colnames(full.refr.zcalib.vals)<-names(split.expr$components)[which(grepl("full.refr",split.expr$components))]
+    #}}}
+    #Add to the z calibration frame {{{
+    zcalib.frame<-as.data.table(cbind(zcalib.frame,full.refr.zcalib.vals))
+    #}}}
+  }
+  #}}}
+  #Run the zcalib expression {{{
+  zcalib.res.expr<-paste0("data.table(group.id=group.id,zcalib=",split.expr$replace.expr,")")
+  #print(zcalib.res.expr)
+  zcalib.result<-zcalib.frame[,eval(parse(text=zcalib.res.expr))]
+  #}}}
+  #}}}
+  #Check that the zcalib value is valid {{{
+  if (all(is.na(zcalib.result$zcalib))) { 
+    cat("\n")
+    print(summary(zcalib.frame))
+    print(zcalib.res.expr)
+    print(str(zcalib.result))
+    stop("All zcalib results are NA! There are no good associations remaining!")
+  }
+  #}}}
+  #Check that the zcalib is a logical {{{ 
+  if (any(!is.numeric(zcalib.result$zcalib))) { 
+    #The zcalib expression does not return a numeric value! {{{
+    stop("Result of zcalib expression was not interpretable as numeric!")
+  } else { 
+    train.cat$zt.calib.factor<-NA
+    for (i in 1:factor.nbins) { 
+      train.cat$zt.calib.factor[which(train.cat$GroupFactor==i)]<-zcalib.result$zcalib[which(zcalib.result$group.id==i)]
+    }
+    #}}}
+    #Apply the calibrations {{{
+    train.cat[[paste0(zt.label,"_calib")]]<-train.cat[[zt.label]]+train.cat$zt.calib.factor
+    #}}}
+  }
+  #}}}
+}
+#}}}
+#Perform SOM QC {{{
+if (do.QC) { 
+  #Notify /*fold*/ {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n    -> Performing SOM Cluster QC ")
+  }
+  #/*fend*/}}}
+  #Check the qc expression for errors {{{ 
+  if (grepl("count.variable.t",qc.expr)&count.variable.t=='') { 
+    stop("count.variable.t is not defined but is used in the cluster QC")
+  }
+  if (grepl("count.variable.r",qc.expr)&count.variable.r=='') { 
+    stop("count.variable.r is not defined but is used in the cluster QC")
+  }
+  if (count.variable.t!=''&!count.variable.t%in%colnames(train.cat)) { 
+    stop("count.variable.t is defined but is not present in the training catalogue!")
+  }
+  if (count.variable.r!=''&!count.variable.r%in%colnames(refr.cat)) { 
+    stop("count.variable.r is defined but is not present in the reference catalogue!")
+  }
+  if (zt.label!=''&!zt.label%in%colnames(train.cat)) { 
+    stop("zt.label is defined but is not present in the training catalogue!")
+  }
+  if (zr.label!=''&!zr.label%in%colnames(refr.cat)) { 
+    stop("zr.label is defined but is not present in the reference catalogue!")
+  }
+  #}}}
+  #Run the QC expression per-group {{{
+  #Seperate the QC expression into individual terms {{{
+  split.expr<-split.expr(qc.expr,ignore='abs')
+  split.names<-names(split.expr$components)
+  keep<-rep(TRUE,length(split.names))
+  #print(split.expr$components)
+  for (ind in 1:length(split.names)) { 
+    keep[ind]<-grepl(split.names[ind],split.expr$replace.expr)
+  }
+  split.expr$components<-split.expr$components[keep]
+  #Check for expression errors {{{
+  if (any(grepl("train.cat",split.expr$components)&grepl("refr.cat",split.expr$components))) { 
+    stop("QC expression attempts to combine train.cat and refr.cat catalogues (of different lengths!)")
+  }
+  #}}}
+  train.expression<-split.expr$components[which(grepl("train.cat",split.expr$components)&
+                                               !grepl("full.train",split.expr$components))]
+  refr.expression<-split.expr$components[which(grepl("refr.cat",split.expr$components)&
+                                              !grepl("full.refr",split.expr$components))]
+  full.train.expression<-split.expr$components[which(grepl("full.train",split.expr$components))]
+  full.refr.expression<-split.expr$components[which(grepl("full.refr",split.expr$components))]
+  #}}}
+  #Convert the train & refr cat names to 'data' {{{
+  train.expression<-gsub('train.cat','data',train.expression)
+  refr.expression<-gsub('refr.cat','data',refr.expression)
+  full.train.expression<-gsub('full.train.cat','train.cat',full.train.expression)
+  full.refr.expression<-gsub('full.refr.cat','refr.cat',full.refr.expression)
+  #}}}
+  #Compute the training cat and reference cat QC {{{
+  qc.frame<-NULL
+  if (any(grepl("train.cat",split.expr$components))) {
+    #Run the training cat QC components {{{
+    train.qc.vals<-generate.kohgroup.property(som=train.som,data=train.cat,
+                                              expression=train.expression,
+                                              expr.label=names(train.expression),
+                                              n.cores=som.cores,n.cluster.bins=factor.nbins,quiet=TRUE)
+    #}}}
+    #Add to the QC frame {{{
+    qc.frame<-as.data.table(train.qc.vals$property)
+    #}}}
+  }
+  if (any(grepl("refr.cat",split.expr$components))) {
+    #Run the reference cat QC components {{{
+    refr.qc.vals<-generate.kohgroup.property(som=refr.som,data=refr.cat,
+                                             expression=refr.expression,
+                                             expr.label=names(refr.expression),
+                                             n.cores=som.cores,n.cluster.bins=factor.nbins,quiet=TRUE)
+    #}}}
+    #Add to the QC frame {{{
+    if (is.null(qc.frame)) { 
+      qc.frame<-as.data.table(refr.qc.vals$property)
+    } else { 
+      qc.frame<-as.data.table(cbind(qc.frame,refr.qc.vals$property[,-which(colnames(refr.qc.vals$property)=='group.id')]))
+    }
+    #}}}
+  }
+  if (any(grepl("full.train",split.expr$components))) {
+    #Run the training cat QC components {{{
+    full.train.qc.vals<-NULL
+    for (expr in full.train.expression) {
+      full.train.qc.vals<-cbind(full.train.qc.vals,eval(parse(text=expr)))
+    }
+    colnames(full.train.qc.vals)<-names(split.expr$components)[which(grepl("full.train",split.expr$components))]
+    #}}}
+    #Add to the QC frame {{{
+    qc.frame<-as.data.table(cbind(qc.frame,full.train.qc.vals))
+    #}}}
+  }
+  if (any(grepl("full.refr",split.expr$components))) {
+    #Run the reference cat QC components {{{
+    full.refr.qc.vals<-NULL
+    for (expr in full.refr.expression) {
+      full.refr.qc.vals<-cbind(full.refr.qc.vals,eval(parse(text=expr)))
+    }
+    colnames(full.refr.qc.vals)<-names(split.expr$components)[which(grepl("full.refr",split.expr$components))]
+    #}}}
+    #Add to the QC frame {{{
+    qc.frame<-as.data.table(cbind(qc.frame,full.refr.qc.vals))
+    #}}}
+  }
+  #}}}
+  #print(str(qc.frame))
+  #Run the QC expression {{{
+  qc.res.expr<-paste0("data.table(group.id=group.id,QCeval=",split.expr$replace.expr,")")
+  qc.result<-qc.frame[,eval(parse(text=qc.res.expr))]
+  #}}}
+  #}}}
+  #Check that the QC returned something {{{
+  if (length(qc.result$QCeval)==0) { 
+    stop("QC result is length 0! There are no good associations remaining!")
+  }
+  #}}}
+  #Check that the QC value is valid {{{
+  if (all(is.na(qc.result$QCeval))) { 
+    print(str(split.expr))
+    print(summary(qc.frame))
+    stop("All QC results are NA! There are no good associations remaining!")
+  }
+  #}}}
+  #Check that the QC is a logical {{{ 
+  if (any(!is.logical(qc.result$QCeval))) { 
+    #Write QC values to catalogue {{{
+    warning("Result of QC was not interpretable as logical!\nQC values will be output but not applied!!")
+    if (!quiet) { 
+      cat(" - WARNING: QC output is not logical! QC will not be applied!!")
+      cat("\n    -> Writing SOM QC results to output catalogues ")
+    }
+    refr.cat$GroupQC<-train.cat$GroupQC<-NA
+    for (i in 1:factor.nbins) { 
+      train.cat$GroupQC[which(train.cat$GroupFactor==i)]<-qc.result$QCeval[which(qc.result$group.id==i)]
+      refr.cat$GroupQC[which(refr.cat$GroupFactor==i)]<-qc.result$QCeval[which(qc.result$group.id==i)]
+    }
+    #}}}
+  } else { 
+    #Apply the QC to catalogue {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n    -> Assigning QC results to sources ")
+    }
+    goodgroups<-qc.result$group.id[which(qc.result$QCeval)]
+    meanz.orig<-weighted.mean(train.cat[[zt.label]],train.cat$SOMweight)
+    if (count.variable.r!=""){ 
+      neff.orig<-sum(refr.cat[[count.variable.r]]*ifelse(refr.cat$SOMweight>0,1,0))/sum(refr.cat[[count.variable.r]])
+    } else { 
+      neff.orig<-length(which(refr.cat$SOMweight>0))/nrow(refr.cat)
+    } 
+    train.cat$SOMweight[which(!train.cat$GroupFactor%in%goodgroups)]<-0
+    train.cat$QCFlag<-ifelse(train.cat$GroupFactor%in%goodgroups,0,1)
+    refr.cat$SOMweight[which(!refr.cat$GroupFactor%in%goodgroups)]<-0
+    refr.cat$QCFlag<-ifelse(refr.cat$GroupFactor%in%goodgroups,0,1)
+    meanz.new<-weighted.mean(train.cat[[zt.label]],train.cat$SOMweight)
+    if (count.variable.r!=""){ 
+      neff.new<-sum(refr.cat[[count.variable.r]]*ifelse(refr.cat$SOMweight>0,1,0))/sum(refr.cat[[count.variable.r]])
+    } else { 
+      neff.new<-length(which(refr.cat$SOMweight>0))/nrow(refr.cat)
+    } 
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat(paste0("\n       -Non-QC'd mu_z: <z> = ",round(digits=3,meanz.orig)," @ phot repr = ",round(digits=1,neff.orig*100),"%"))
+      cat(paste0("\n       -Post-QC mu_z:  <z> = ",round(digits=3,meanz.new)," @ phot repr = ",round(digits=1,neff.new*100),"%"))
+      cat("\n    -> Finishing QC ")
+    }
+    #}}}
+  }
+  #}}}
+}
+#}}}
 #Generate the reference catalogue plots  /*fold*/ {{{
 if (plot>0) { 
   #Notify /*fold*/ {{{
@@ -1462,6 +1916,24 @@ if (plot>0) {
 #/*fend*/}}}
 #/*fend*/}}}
 
+#Do we want to write reduced size catalogues? /*fold*/ {{{
+if (short.write) { 
+  seperated.labels<-unique((vecsplit(gsub('[-+*\\/\\)\\(]'," ",factor.label),' ')))
+  if (any(sapply(train.cat[,seperated.labels,with=F],class)=='function')) { 
+    seperated.labels[-which(sapply(train.cat[1,seperated.labels,with=F],class)=='')]<-0
+  }
+  shortcol<-c(seperated.labels,count.variable.t,count.variable.r,zt.label,
+              zr.label,"GroupFactor","SOMweight")
+  if (do.zcalib) { 
+    shortcol<-c(shortcol,"zt.calib.factor",paste0(zt.label,"_calib"))
+  } 
+  if (do.QC) { 
+    shortcol<-c(shortcol,"GroupQC","QCFlag")
+  } 
+  train.cat<-train.cat[,which(colnames(train.cat)%in%shortcol),with=F]
+  refr.cat<-refr.cat[,which(colnames(refr.cat)%in%shortcol),with=F]
+}
+#/*fend*/}}}
 #Output the DIR weighted catalogues /*fold*/ {{{
 if(!quiet) { 
   cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
@@ -1469,79 +1941,23 @@ if(!quiet) {
   cat(paste("  > Outputing DIR weights catalogue")) 
   timer<-proc.time()[3]
 }
-if (grepl('.cat',output.file,fixed=T)) {
-  #Output an LDAC catalogue /*fold*/ {{{
-  if (is.data.table(train.cat)) { 
-    train.cat<-as.data.frame(train.cat)
-  }
-  write.ldac(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.cat'),output.file,fixed=TRUE)),train.cat,force=TRUE,clean=TRUE,
-  asctoldac=sub('ldactoasc','asctoldac',ldactoasc))
-  #/*fend*/}}}
-} else if (grepl('.fits',output.file,fixed=T)) {
-  #Check for factors /*fold*/ {{{
-  if (any(unlist(lapply(train.cat,class))=='factor')) { 
-    for (col in which(unlist(lapply(train.cat,class))=='factor')) { 
-      train.cat[[col]]<-levels(train.cat[[col]])[train.cat[[col]]]
-    }
-  }
-  #/*fend*/}}}
-  #Output a fits catalogue /*fold*/ {{{
-  stat<-try(Rfits::Rfits_write_table(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.fits'),output.file,fixed=TRUE)),train.cat))
-  if (suppressWarnings(class(stat)=='try-error')) { 
-    stat<-try(LAMBDAR::write.fits.cat(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.fits'),output.file,fixed=TRUE)),train.cat))
-    if (suppressWarnings(class(stat)=='try-error')) { 
-      stop("Error in training catalogue output: Write to FITS failed")
-    }
-  } 
-  #/*fend*/}}}
-} else if (grepl('.Rdata',output.file,fixed=T)) {
-  #Output an Rdata catalogue /*fold*/ {{{
-  save(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.Rdata'),output.file,fixed=TRUE)),train.cat)
-  #/*fend*/}}}
-} else { 
-  #Output a CSV catalogue /*fold*/ {{{
-  write.csv(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.csv'),output.file,fixed=TRUE)),train.cat,quote=F,row.names=F)
-  #/*fend*/}}}
+#Output the training catalogue /*fold*/ {{{
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_DIRsom',addstr,'.',output.ending),output.file,fixed=TRUE)),train.cat,quote=F,row.names=F)
+#/*fend*/}}}
+#Notify /*fold*/ {{{
+if(!quiet) { 
+  io.clock<-io.clock+proc.time()[3]-timer
+  cat(paste(" - Done",as.time(proc.time()[3]-timer,digits=0),"\n")) 
 }
+#/*fend*/}}}
 if(!quiet) { 
   cat(paste("\n  # DIR_weights Reference catalogue name:",sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.',output.ending),output.file,fixed=TRUE),'\n')) 
   cat(paste("  > Outputing DIR weights catalogue")) 
   timer<-proc.time()[3]
 }
-if (grepl('.cat',output.file,fixed=T)) {
-  #Output an LDAC catalogue /*fold*/ {{{
-  if (is.data.table(refr.cat)) { 
-    refr.cat<-as.data.frame(refr.cat)
-  }
-  write.ldac(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.cat'),output.file,fixed=TRUE)),refr.cat,force=TRUE,clean=TRUE,
-  asctoldac=sub('ldactoasc','asctoldac',ldactoasc))
-  #/*fend*/}}}
-} else if (grepl('.fits',output.file,fixed=T)) {
-  #Output a fits catalogue /*fold*/ {{{
-  #Check for factors /*fold*/ {{{
-  if (any(unlist(lapply(refr.cat,class))=='factor')) { 
-    for (col in which(unlist(lapply(refr.cat,class))=='factor')) { 
-      refr.cat[[col]]<-levels(refr.cat[[col]])[refr.cat[[col]]]
-    }
-  }
-  #/*fend*/}}}
-  stat<-try(Rfits::Rfits_write_table(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.fits'),output.file,fixed=TRUE)),refr.cat))
-  if (suppressWarnings(class(stat)=='try-error')) { 
-    stat<-try(LAMBDAR::write.fits.cat(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.fits'),output.file,fixed=TRUE)),refr.cat))
-    if (suppressWarnings(class(stat)=='try-error')) { 
-      stop("Error in reference catalogue output: Write to FITS failed")
-    }
-  } 
-  #/*fend*/}}}
-} else if (grepl('.Rdata',output.file,fixed=T)) {
-  #Output an Rdata catalogue /*fold*/ {{{
-  save(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.Rdata'),output.file,fixed=TRUE)),refr.cat)
-  #/*fend*/}}}
-} else { 
-  #Output a CSV catalogue /*fold*/ {{{
-  write.csv(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.csv'),output.file,fixed=TRUE)),refr.cat,quote=F,row.names=F)
-  #/*fend*/}}}
-}
+#Output the reference catalogue /*fold*/ {{{
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending),paste0('_refr_DIRsom',addstr,'.',output.ending),output.file,fixed=TRUE)),refr.cat,quote=F,row.names=F)
+#/*fend*/}}}
 #Notify /*fold*/ {{{
 if(!quiet) { 
   io.clock<-io.clock+proc.time()[3]-timer
