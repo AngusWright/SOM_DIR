@@ -3,13 +3,14 @@
 #
 
 #Print the help and default parameters 
-#Rscript R/DIR_som.R -h
-#Rscript R/DIR_som.R -hd 
+#Rscript R/SOM_DIR.R -h
+#Rscript R/SOM_DIR.R -hd 
 
 #Run the main script
-Rscript R/DIR_som.R -i Demo/Inputs/ReferenceCat.csv Demo/Inputs/TrainingCat.csv \
-                    -k z_phot z_spec MAG_u MAG_g MAG_r MAG_i MAG_g-MAG_r \
+Rscript R/SOM_DIR.R -r Demo/Inputs/ReferenceCat.csv -t Demo/Inputs/TrainingCat.csv \
+                    --zr.label z_phot --zt.label z_spec \
+                    -k MAG_u MAG_g MAG_r MAG_i MAG_g-MAG_r \
                     -o Demo/Outputs/ \
                     --som.dim 24 24 \
-                    -pp -sc 1 --force
+                    -pp -sc 1 --force --noqc
 

@@ -416,6 +416,7 @@ while (length(inputs)!=0) {
   } else if (inputs[1]=='--noqc') {
     #Read the quality control expressions /*fold*/ {{{
     do.QC<-FALSE
+    inputs<-inputs[-1]
     warning("Not performing QC of clusters!") 
     #/*fend*/}}}
   } else if (inputs[1]=='--zt.calib') {
@@ -678,7 +679,7 @@ while (length(inputs)!=0) {
 #/*fend*/}}}
 
 #Setup the QC expression {{{ 
-if (!exists("qc.expr")) {
+if (!exists("qc.expr") & do.QC) {
   if (count.variable.t=="" & count.variable.r=="") { 
     #Straight mean for train.cat and refr.cat
     qc.expr<-"abs(mean(train.cat[[zt.label]])-mean(refr.cat[[zr.label]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
@@ -1015,7 +1016,6 @@ if (length(factor.label)<2) {
     #Plot the som codes /*fold*/ {{{
     png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_SOM_codes.png',output.file,fixed=TRUE)),height=10*res,width=10*res,res=res)
     plot(train.som, type="codes",shape='straight',codeRendering='lines',border=NA)
-    add.cluster.boundaries(train.som,train.hc,lwd=3,col=hsv(1,0,0,0.8))
     dev.off()
     #/*fend*/}}}
     #Plot the cluster makeup /*fold*/ {{{
@@ -1035,25 +1035,20 @@ if (length(factor.label)<2) {
       #/*fend*/}}}
       #Plot the counts per SOM cell /*fold*/ {{{
       cell.counts<-plot(train.som, type="count",shape='straight',border=NA,heatkeywidth=1,zlog=TRUE)
-      add.cluster.boundaries(train.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
       #/*fend*/}}}
       #Plot the neighbour distances per SOM cell /*fold*/ {{{
       plot(train.som, type="dist.neighbours",shape='straight',border=NA,heatkeywidth=1)
-      add.cluster.boundaries(train.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
       #/*fend*/}}}
       #Plot the quality per SOM cell /*fold*/ {{{
       plot(train.som, type="quality",shape='straight',border=NA,heatkeywidth=1)
-      add.cluster.boundaries(train.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
       #/*fend*/}}}
       #Plot the number density per SOM cell /*fold*/ {{{
       plot(train.som, type="count",shape='straight',border=NA,heatkeywidth=1)
-      add.cluster.boundaries(train.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
       #/*fend*/}}}
       for (i in 1:length(train.som$codes[[1]][1,])) { 
         #Plot the i^th data property per SOM cell /*fold*/ {{{
-        plot(train.som, type = "property", property = train.som$codes[[1]][,i],
+        plot(train.som, type = "property", property = i,
              main=paste0(colnames(train.som$data[[1]])[i],'(scaled)'), palette.name=BlRd,shape='straight',border=NA,heatkeywidth=1)
-        add.cluster.boundaries(train.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
         #/*fend*/}}}
       }
       #Close the plot device /*fold*/ {{{
@@ -1116,7 +1111,7 @@ if (optimise.HCs) {
   if (is.null(train.som$hclust)) {
     train.hc.mat = cutree(hclust(dist(train.som$codes[[1]])), as.numeric(HC.steps))
   } else {
-    train.hc.mat = cutree(train.clust, as.numeric(HC.steps))
+    train.hc.mat = cutree(train.som$hclust, as.numeric(HC.steps))
   }
   #}}}
   #Notify {{{
@@ -1167,7 +1162,6 @@ if (optimise.HCs) {
       stop(paste("somclust and catalogue for reference are of different lengths?!\n",
            nrow(refr.somclust),"!=",nrow(refr.cat),'\n'))
     }
-    debug(colWeightedTabulates)
     ct.refr<-colWeightedTabulates(refr.somclust,w=refr.cat[[count.variable.r]],values=1:max(HC.steps),cores=som.cores)
   } 
   if (any(dim(ct.refr)!=c(length(HC.steps),max(HC.steps)))) { 
@@ -1205,13 +1199,8 @@ if (optimise.HCs) {
     short.timer<-proc.time()[3]
     cat("\n       -Training weights per cluster")
   }
-  print(str(ct.refr))
-  print(str(ct.train))
   wt.final<-ct.refr/ct.train
   wt.final[which(!is.finite(wt.final))]<-0
-  #}}}
-  #Apply the QC {{{
-  #wt.final[which(QC.fail)]<-0
   #}}}
   #Calculate the mean-z for each HC step {{{
   if (!quiet) { 
@@ -1281,8 +1270,8 @@ if (plot>0) {
   }#/*fend*/}}}
   #Plot the som codes /*fold*/ {{{
   png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_refr_SOM_codes.png',output.file,fixed=TRUE)),height=10*res,width=10*res,res=res)
-  plot(refr.som, type="codes", bgcol=rainbow(factor.nbins)[train.hc],shape='straight',codeRendering='lines',border=NA)
-  add.cluster.boundaries(refr.som,train.hc,lwd=3,col=hsv(1,0,0,0.8))
+  plot(refr.som, type="codes", bgcol=rainbow(factor.nbins)[train.som$cell.clust],shape='straight',codeRendering='lines',border=NA)
+  add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=3,col=hsv(1,0,0,0.8))
   dev.off()
   #/*fend*/}}}
   #Plot the changes at each iteration /*fold*/ {{{
@@ -1307,25 +1296,25 @@ if (plot>0) {
     ##/*fend*/}}}
     #Plot the counts per SOM cell /*fold*/ {{{
     cell.counts<-plot(refr.som, type="count",shape='straight',border=NA,heatkeywidth=1,zlog=TRUE)
-    add.cluster.boundaries(refr.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
+    add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=1,col=hsv(1,0,0,0.3))
     #/*fend*/}}}
     #Plot the neighbour distances per SOM cell /*fold*/ {{{
     plot(refr.som, type="dist.neighbours",shape='straight',border=NA,heatkeywidth=1)
-    add.cluster.boundaries(refr.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
+    add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=1,col=hsv(1,0,0,0.3))
     #/*fend*/}}}
     #Plot the quality per SOM cell /*fold*/ {{{
     plot(refr.som, type="quality",shape='straight',border=NA,heatkeywidth=1)
-    add.cluster.boundaries(refr.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
+    add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=1,col=hsv(1,0,0,0.3))
     #/*fend*/}}}
     #Plot the number density per SOM cell /*fold*/ {{{
     plot(refr.som, type="count",shape='straight',border=NA,heatkeywidth=1)
-    add.cluster.boundaries(refr.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
+    add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=1,col=hsv(1,0,0,0.3))
     #/*fend*/}}}
     for (i in 1:length(refr.som$codes[[1]][1,])) { 
       #Plot the i^th data property per SOM cell /*fold*/ {{{
       plot(refr.som, type = "property", property = refr.som$codes[[1]][,i],
            main=paste0(colnames(refr.som$data[[1]])[i],'(scaled)'), palette.name=BlRd,shape='straight',border=NA,heatkeywidth=1)
-      add.cluster.boundaries(refr.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
+      add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=1,col=hsv(1,0,0,0.3))
       #/*fend*/}}}
     }
     #Close the plot device /*fold*/ {{{
@@ -1403,8 +1392,8 @@ if (plot>0) {
 if (plot>0) {
   wrefr.cell<-wtrain.cell<-rep(NA,som.dim[1]*som.dim[2])
   for (i in 1:factor.nbins) { 
-    wtrain.cell[which(train.hc==i)]<-train.cat$SOMweight[which(train.cat$GroupFactor==i)[1]]
-    wrefr.cell[which(train.hc==i)]<-refr.cat$SOMweight[which(refr.cat$GroupFactor==i)[1]]
+    wtrain.cell[which(train.som$cell.clust==i)]<-train.cat$SOMweight[which(train.cat$GroupFactor==i)[1]]
+    wrefr.cell[which(train.som$cell.clust==i)]<-refr.cat$SOMweight[which(refr.cat$GroupFactor==i)[1]]
   }
   png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_SOMweights_paint.png',output.file,fixed=TRUE)),height=5*res,width=7*res,res=res)
   layout(cbind(1,2))
@@ -1528,7 +1517,6 @@ if (do.zcalib) {
   #}}}
   #Run the zcalib expression {{{
   zcalib.res.expr<-paste0("data.table(group.id=group.id,zcalib=",split.expr$replace.expr,")")
-  #print(zcalib.res.expr)
   zcalib.result<-zcalib.frame[,eval(parse(text=zcalib.res.expr))]
   #}}}
   #}}}
@@ -1592,7 +1580,6 @@ if (do.QC) {
   split.expr<-split.expr(qc.expr,ignore='abs')
   split.names<-names(split.expr$components)
   keep<-rep(TRUE,length(split.names))
-  #print(split.expr$components)
   for (ind in 1:length(split.names)) { 
     keep[ind]<-grepl(split.names[ind],split.expr$replace.expr)
   }
@@ -1668,7 +1655,6 @@ if (do.QC) {
     #}}}
   }
   #}}}
-  #print(str(qc.frame))
   #Run the QC expression {{{
   qc.res.expr<-paste0("data.table(group.id=group.id,QCeval=",split.expr$replace.expr,")")
   qc.result<-qc.frame[,eval(parse(text=qc.res.expr))]
@@ -1751,13 +1737,9 @@ if (plot>0) {
   train.count.tab<-table(train.som$unit.classif)
   refr.count.tab<-table(refr.som$unit.classif)
   plot(train.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Training Sample',palette=scale.palette(log10(train.count.tab)),ncol=1e3,heatkeyborder=NA,zlog=TRUE)
-  #plot(train.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Training Sample',palette=scale.palette(train.count.tab),ncol=1e3,heatkeyborder=NA)
-  #     #zlim=quantile(train.count.tab,probs=c(0.1,0.9),na.rm=TRUE))
-  add.cluster.boundaries(train.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
+  add.cluster.boundaries(train.som,train.som$cell.clust,lwd=1,col=hsv(1,0,0,0.3))
   plot(refr.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Reference Sample',palette=scale.palette(log10(refr.count.tab)),ncol=1e3,heatkeyborder=NA,zlog=TRUE)
-  #plot(refr.som, type="counts",shape='straight',border=NA,heatkeywidth=som.dim[1]/20,main='Reference Sample',palette=scale.palette(refr.count.tab),ncol=1e3,heatkeyborder=NA)
-  #     #zlim=quantile(refr.count.tab,probs=c(0.1,0.9),na.rm=TRUE))
-  add.cluster.boundaries(refr.som,train.hc,lwd=1,col=hsv(1,0,0,0.3))
+  add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=1,col=hsv(1,0,0,0.3))
   dev.off()
   #/*fend*/}}}
   #Measure the per-cell zrefr and z_B /*fold*/ {{{
@@ -1765,27 +1747,17 @@ if (plot>0) {
   for (i in 1:factor.nbins) { 
     #Assign the data to the cluster if it's SOMcell belongs to the cluster/*fold*/ {{{
     if (length(which(refr.cat$GroupFactor==i))!=0) {
-      zrefr.cell[which(train.hc==i)]<-median(refr.cat[[zr.label]][which(refr.cat$GroupFactor==i)],na.rm=TRUE) 
-      zrefr.sd.cell[which(train.hc==i)]<-mad(refr.cat[[zr.label]][which(refr.cat$GroupFactor==i)],na.rm=TRUE) 
+      zrefr.cell[which(train.som$cell.clust==i)]<-median(refr.cat[[zr.label]][which(refr.cat$GroupFactor==i)],na.rm=TRUE) 
+      zrefr.sd.cell[which(train.som$cell.clust==i)]<-mad(refr.cat[[zr.label]][which(refr.cat$GroupFactor==i)],na.rm=TRUE) 
     }
     if (length(which(train.cat$GroupFactor==i))!=0) {
-      ztrain.cell[which(train.hc==i)]<-median(train.cat[[zt.label]][which(train.cat$GroupFactor==i)],na.rm=TRUE) 
-      ztrain.sd.cell[which(train.hc==i)]<-mad(train.cat[[zt.label]][which(train.cat$GroupFactor==i)],na.rm=TRUE) 
+      ztrain.cell[which(train.som$cell.clust==i)]<-median(train.cat[[zt.label]][which(train.cat$GroupFactor==i)],na.rm=TRUE) 
+      ztrain.sd.cell[which(train.som$cell.clust==i)]<-mad(train.cat[[zt.label]][which(train.cat$GroupFactor==i)],na.rm=TRUE) 
     }
     #/*fend*/}}}
   }
   #/*fend*/}}}
   if (plot>1) { 
-    #Plot the SEDs of each cluster /*fold*/ {{{
-    png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_clustSEDs.png',output.file,fixed=TRUE)),height=10*res,width=20*res,res=res)
-    magplot(NA,xlim=c(0,length(factor.label)),ylim=range(cluster.median-colMedians(cluster.median)),xlab='Factor Index',ylab='Factor value + Cluster Index')
-    count<-1
-    for (i in order(cluster.median[,1])) { 
-      lines(1:length(factor.label),cluster.median[i,]-colMedians(cluster.median),col=hsv(2/3*count/factor.nbins,alpha=0.3),lwd=2)
-      count<-count+1
-    }
-    dev.off()
-    #/*fend*/}}}
     #Plot the inferred z distributions /*fold*/ {{{
     png(file=paste0(output.path,'/',sub(paste0('.',output.ending),'_zz.png',output.file,fixed=TRUE)),height=5*res,width=10*res,res=res)
     layout(cbind(1,2))
