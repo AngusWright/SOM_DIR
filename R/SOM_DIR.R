@@ -690,16 +690,16 @@ while (length(inputs)!=0) {
 if (!exists("qc.expr") & do.QC) {
   if (count.variable.t=="" & count.variable.r=="") { 
     #Straight mean for train.cat and refr.cat
-    qc.expr<-"abs(mean(train.cat[[zt.label]])-mean(refr.cat[[zr.label]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+    qc.expr<-"abs(mean(train.cat[[zt.label]])-mean(refr.cat[[zr.label]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   } else if (count.variable.r=="") { 
     #Weighted mean for train.cat & Straight mean for refr.cat 
-    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-mean(refr.cat[[zr.label]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-mean(refr.cat[[zr.label]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   } else if (count.variable.t=="") { 
     #Straight mean for train.cat & Weighted mean for refr.cat 
-    qc.expr<-"abs(mean(train.cat[[zt.label]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+    qc.expr<-"abs(mean(train.cat[[zt.label]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   } else {
     #Weighted mean for train.cat & Weighted mean for refr.cat 
-    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=max(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4)" 
+    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   }
 }
 #}}}
@@ -1166,78 +1166,304 @@ if (optimise.HCs) {
     short.timer<-proc.time()[3]
     cat("\n    -> Dispersing training data into cluster bins")
   }#}}}
-  #Sort the training data into the hierarchical clusters {{{
-  #Get the individual data-to-SOMcell IDs {{{
-  classif<-replicate(length(HC.steps),train.som$unit.classif)
-  ij<-as.matrix(expand.grid(seq(nrow(classif)),seq(ncol(classif)))); 
-  #}}}
-  #Convert the IDs from data-to-SOMcell into data-to-cluster {{{
-  train.somclust<-array(train.hc.mat[cbind(classif[ij],col(classif)[ij])],dim=dim(classif))
-  #}}}
-  #}}}
-  #Notify {{{
-  if (!quiet) { 
-    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-    short.timer<-proc.time()[3]
-    cat("\n    -> Dispersing reference data into cluster bins")
-  }#}}}
-  #Sort the refr data into the hierarchical clusters {{{
-  #Get the individual data-to-SOMcell IDs {{{
-  classif<-replicate(length(HC.steps),refr.som$unit.classif)
-  ij<-as.matrix(expand.grid(seq(nrow(classif)),seq(ncol(classif)))); 
-  #}}}
-  #Convert the IDs from data-to-SOMcell into data-to-cluster {{{
-  refr.somclust<-array(train.hc.mat[cbind(classif[ij],col(classif)[ij])],dim=dim(classif))
-  #}}}
-  #}}}
-  #Notify {{{
-  if (!quiet) { 
-    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-    short.timer<-proc.time()[3]
-    cat("\n    -> Generating the SOM DIR weights: ")
-  }
-  #}}}
-  #Reference counts {{{
-  if (!quiet) { 
-    cat("\n       -Reference counts per cluster")
-  }
-  if (count.variable.r=='') { 
-    ct.refr<-matrixStats::colTabulates(refr.somclust,values=1:max(HC.steps))
+  #Optimise by datum or by cell {{{
+  optimise.cell<-TRUE
+  if (optimise.cell) { 
+    #By Cell {{{
+    #If we're doing QC, prepare the QC expressions {{{
+    if (do.QC) { 
+      #Check the qc expression for errors {{{ 
+      if (grepl("count.variable.t",qc.expr)&count.variable.t=='') { 
+        stop("count.variable.t is not defined but is used in the cluster QC")
+      }
+      if (grepl("count.variable.r",qc.expr)&count.variable.r=='') { 
+        stop("count.variable.r is not defined but is used in the cluster QC")
+      }
+      if (count.variable.t!=''&!count.variable.t%in%colnames(train.cat)) { 
+        stop("count.variable.t is defined but is not present in the training catalogue!")
+      }
+      if (count.variable.r!=''&!count.variable.r%in%colnames(refr.cat)) { 
+        stop("count.variable.r is defined but is not present in the reference catalogue!")
+      }
+      if (zt.label!=''&!zt.label%in%colnames(train.cat)) { 
+        stop("zt.label is defined but is not present in the training catalogue!")
+      }
+      if (zr.label!=''&!zr.label%in%colnames(refr.cat)) { 
+        stop("zr.label is defined but is not present in the reference catalogue!")
+      }
+      #}}}
+      #Seperate the QC expression into individual terms {{{
+      split.expr<-split.expr(qc.expr,ignore=c('abs','na.rm','cbind','rbind','rowMaxs','colMaxs'))
+      split.names<-names(split.expr$components)
+      keep<-rep(TRUE,length(split.names))
+      for (ind in 1:length(split.names)) { 
+        keep[ind]<-grepl(split.names[ind],split.expr$replace.expr)
+      }
+      split.expr$components<-split.expr$components[keep]
+      #Check for expression errors {{{
+      if (any(grepl("train.cat",split.expr$components)&grepl("refr.cat",split.expr$components))) { 
+        stop("QC expression attempts to combine train.cat and refr.cat catalogues (of different lengths!)")
+      }
+      #}}}
+      train.expression<-split.expr$components[which(grepl("train.cat",split.expr$components)&
+                                                   !grepl("full.train",split.expr$components))]
+      refr.expression<-split.expr$components[which(grepl("refr.cat",split.expr$components)&
+                                                  !grepl("full.refr",split.expr$components))]
+      full.train.expression<-split.expr$components[which(grepl("full.train",split.expr$components))]
+      full.refr.expression<-split.expr$components[which(grepl("full.refr",split.expr$components))]
+      #}}}
+      #Convert the train & refr cat names to 'data' {{{
+      train.expression<-gsub('train.cat','data',train.expression)
+      refr.expression<-gsub('refr.cat','data',refr.expression)
+      full.train.expression<-gsub('full.train.cat','train.cat',full.train.expression)
+      full.refr.expression<-gsub('full.refr.cat','refr.cat',full.refr.expression)
+      #}}}
+      #If needed, run any full catalogue QC components {{{
+      if (any(grepl("full.train",split.expr$components))) {
+        #Run the training cat QC components {{{
+        full.train.qc.vals<-NULL
+        for (expr in full.train.expression) {
+          full.train.qc.vals<-cbind(full.train.qc.vals,eval(parse(text=expr)))
+        }
+        colnames(full.train.qc.vals)<-names(split.expr$components)[which(grepl("full.train",split.expr$components))]
+        #}}}
+      }
+      if (any(grepl("full.refr",split.expr$components))) {
+        #Run the reference cat QC components {{{
+        full.refr.qc.vals<-NULL
+        for (expr in full.refr.expression) {
+          full.refr.qc.vals<-cbind(full.refr.qc.vals,eval(parse(text=expr)))
+        }
+        colnames(full.refr.qc.vals)<-names(split.expr$components)[which(grepl("full.refr",split.expr$components))]
+        #}}}
+      }
+      #}}}
+    }
+    #}}}
+    #Notify {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n    -> Computing per-cell training stats")
+    }#}}}
+    #Measure the per-cell training properties {{{ 
+    if (count.variable.t=='') { 
+      stat.expression<-c(count="nrow(data)")
+    } else { 
+      stat.expression<-c(count="sum(data[[count.variable.t]],na.rm=T)")
+    } 
+    stat.expression<-c(stat.expression,meanz="mean(data[[zt.label]],na.rm=T)")
+    if (do.QC) { 
+      stat.expression<-c(stat.expression,train.expression)
+    }
+    train.cell.props<-generate.kohgroup.property(som=train.som,data=train.cat,
+                                              expression=stat.expression,
+                                              expr.label=names(stat.expression),
+                                              n.cores=som.cores,n.cluster.bins=prod(som.dim),quiet=TRUE)
+    if (do.QC) { 
+      #Add to the QC frame {{{
+      qc.frame<-as.data.table(train.cell.props$property)
+      #}}}
+    }
+    #}}}
+    #Notify {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n    -> Computing per-cell reference stats")
+    }#}}}
+    #Measure the per-cell reference properties {{{ 
+    if (count.variable.r=='') { 
+      stat.expression<-c(count="nrow(data)",countsq="nrow(data)")
+      stat.expression<-c(stat.expression,
+                         meanz="mean(data[[zr.label]],na.rm=T)")
+    } else { 
+      stat.expression<-c(count="sum(data[[count.variable.r]],na.rm=T)",
+                         countsq="sum(data[[count.variable.r]]^2,na.rm=T)")
+      stat.expression<-c(stat.expression,
+                         meanz="weighted.mean(data[[zr.label]],data[[count.variable.r]],na.rm=T)")
+    } 
+    if (do.QC) { 
+      stat.expression<-c(stat.expression,refr.expression)
+    }
+    refr.cell.props<-generate.kohgroup.property(som=refr.som,data=refr.cat,
+                                              expression=stat.expression,
+                                              expr.label=names(stat.expression),
+                                              n.cores=som.cores,n.cluster.bins=prod(som.dim),quiet=TRUE)
+    #Add to the QC frame {{{
+    qc.frame<-as.data.table(cbind(qc.frame,refr.cell.props$property[,-which(colnames(refr.cell.props$property)=='group.id')]))
+    #}}}
+    #}}}
+    #If needed, add full catalogue properties to QC frame {{{
+    if (do.QC) { 
+      if (any(grepl("full.train",split.expr$components))) {
+        #Add to the QC frame {{{
+        qc.frame<-as.data.table(cbind(qc.frame,full.train.qc.vals))
+        #}}}
+      } 
+      if (any(grepl("full.refr",split.expr$components))) {
+        #Add to the QC frame {{{
+        qc.frame<-as.data.table(cbind(qc.frame,full.refr.qc.vals))
+        #}}}
+      } 
+    }
+    #}}}
+    #Notify {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n    -> Computing Statistics for each Clustering level")
+    }#}}}
+    #Conglomerate values for each HC {{{ 
+    #Training results {{{
+    train.res<-foreach(step=1:length(HC.steps))%dopar% {
+      #Get the cell-to-clust IDs for this setup
+      group.fact<-factor(train.hc.mat[,step],levels=seq(max(HC.steps)))
+      #Compute counts per cluster
+      count<-sapply(split(train.cell.props$property$count,group.fact),sum)
+      #Compute (muz_i*N_i / sum(N_i)) counts per cluster
+      meanz<-sapply(split(train.cell.props$property$meanz*train.cell.props$property$count,group.fact),sum,na.rm=T)
+      meanz<-meanz/count
+      #Return the results
+      return=data.frame(count=count,meanz=meanz)
+    }
+    #}}}
+    # Reference results {{{
+    refr.res<-foreach(step=1:length(HC.steps))%dopar% {
+      group.fact<-factor(train.hc.mat[,step],levels=seq(max(HC.steps)))
+      count<-sapply(split(refr.cell.props$property$count,group.fact),sum)
+      countsq<-sapply(split(refr.cell.props$property$countsq,group.fact),sum)
+      meanz<-sapply(split(refr.cell.props$property$meanz*refr.cell.props$property$count,group.fact),sum,na.rm=T)
+      meanz<-meanz/count
+      return=data.frame(count=count,countsq=countsq,meanz=meanz)
+    }
+    #}}}
+    if (do.QC) { 
+      #Get the QC results per cluster {{{
+      qc.res<-foreach(step=1:length(HC.steps))%dopar% {
+        group.fact<-factor(train.hc.mat[,step],levels=seq(max(HC.steps)))
+        #Combine the QC components 
+        comb.comps<-data.table(group.id=seq(max(HC.steps)))
+        #Compute counts per cluster
+        for (comp in names(split.expr$components)) { 
+          comb.comps[[comp]]<-sapply(split(qc.frame[[comp]],group.fact),mean,na.rm=T)
+        }
+        #Evaluate the QC
+        qc.res.expr<-paste0("data.table(group.id=group.id,QCeval=",split.expr$replace.expr,")")
+        qc.result<-comb.comps[,eval(parse(text=qc.res.expr))]
+        #Return the QC result 
+        return=data.frame(QC=ifelse(qc.result$QCeval,1,0))
+      }
+      #}}}
+      #Reformat the results {{{
+      qc.vals<-ctsq.refr<-ct.refr<-ct.train<-muz.train<-matrix(NA,nrow=length(HC.steps),ncol=max(HC.steps))
+      for (step in 1:length(HC.steps)) { 
+        #Training Counts per setup 
+        ct.train[step,]<-train.res[[step]]$count
+        #Training meanz per setup 
+        muz.train[step,]<-train.res[[step]]$meanz
+        #Reference Counts per setup 
+        ct.refr[step,]<-refr.res[[step]]$count
+        #Reference Counts per setup 
+        ctsq.refr[step,]<-refr.res[[step]]$countsq
+        #QC per setup
+        qc.vals[step,]<-qc.res[[step]]$QC
+      }
+      #}}}
+    } else { 
+      #Reformat the results {{{
+      ctsq.refr<-ct.refr<-ct.train<-muz.train<-matrix(NA,nrow=length(HC.steps),ncol=max(HC.steps))
+      for (step in 1:length(HC.steps)) { 
+        #Training Counts per setup 
+        ct.train[step,]<-train.res[[step]]$count
+        #Training meanz per setup 
+        muz.train[step,]<-train.res[[step]]$meanz
+        #Reference Counts per setup 
+        ct.refr[step,]<-refr.res[[step]]$count
+        #Reference Counts squared per setup 
+        ctsq.refr[step,]<-refr.res[[step]]$countsq
+      }
+      #}}}
+    }
+    #}}}
+    #}}}
   } else { 
-    if (nrow(refr.somclust)!=nrow(refr.cat)) { 
-      stop(paste("somclust and catalogue for reference are of different lengths?!\n",
-           nrow(refr.somclust),"!=",nrow(refr.cat),'\n'))
+    #By Datum {{{
+    #Sort the training data into the hierarchical clusters {{{
+    #Get the individual data-to-SOMcell IDs {{{
+    classif<-replicate(length(HC.steps),train.som$unit.classif)
+    ij<-as.matrix(expand.grid(seq(nrow(classif)),seq(ncol(classif)))); 
+    #}}}
+    #Convert the IDs from data-to-SOMcell into data-to-cluster {{{
+    train.somclust<-array(train.hc.mat[cbind(classif[ij],col(classif)[ij])],dim=dim(classif))
+    #}}}
+    #}}}
+    #Notify {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n    -> Dispersing reference data into cluster bins")
+    }#}}}
+    #Sort the refr data into the hierarchical clusters {{{
+    #Get the individual data-to-SOMcell IDs {{{
+    classif<-replicate(length(HC.steps),refr.som$unit.classif)
+    ij<-as.matrix(expand.grid(seq(nrow(classif)),seq(ncol(classif)))); 
+    #}}}
+    #Convert the IDs from data-to-SOMcell into data-to-cluster {{{
+    refr.somclust<-array(train.hc.mat[cbind(classif[ij],col(classif)[ij])],dim=dim(classif))
+    #}}}
+    #}}}
+    #Notify {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n    -> Generating the SOM DIR weights: ")
     }
-    ct.refr<-colWeightedTabulates(refr.somclust,w=refr.cat[[count.variable.r]],values=1:max(HC.steps),cores=som.cores)
-  } 
-  if (any(dim(ct.refr)!=c(length(HC.steps),max(HC.steps)))) { 
-    stop(paste0("\nReference Counts is not of expected length; likely failure in parallelisation!\n",
-         "{",paste(dim(ct.refr),collapse='x'),"} != {",length(HC.steps),"x",max(HC.steps)))
-  }
-  #}}}
-  #Training counts {{{
-  if (!quiet) { 
-    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-    short.timer<-proc.time()[3]
-    cat("\n       -Training counts per cluster")
-  }
-  if (count.variable.t=='') { 
-    ct.train<-matrixStats::colTabulates(train.somclust,values=1:max(HC.steps))
-  } else {
-    if (nrow(train.somclust)!=nrow(train.cat)) { 
-      stop(paste("somclust and catalogue for training are of different lengths?!\n",
-           nrow(train.somclust),"!=",nrow(train.cat),'\n'))
+    #}}}
+    #Reference counts {{{
+    if (!quiet) { 
+      cat("\n       -Reference counts per cluster")
     }
-    ct.train<-colWeightedTabulates(train.somclust,w=train.cat[[count.variable.t]],values=1:max(HC.steps))
+    if (count.variable.r=='') { 
+      ct.refr<-matrixStats::colTabulates(refr.somclust,values=1:max(HC.steps))
+    } else { 
+      if (nrow(refr.somclust)!=nrow(refr.cat)) { 
+        stop(paste("somclust and catalogue for reference are of different lengths?!\n",
+             nrow(refr.somclust),"!=",nrow(refr.cat),'\n'))
+      }
+      ct.refr<-colWeightedTabulates(refr.somclust,w=refr.cat[[count.variable.r]],values=1:max(HC.steps),cores=som.cores)
+    } 
+    if (any(dim(ct.refr)!=c(length(HC.steps),max(HC.steps)))) { 
+      stop(paste0("\nReference Counts is not of expected length; likely failure in parallelisation!\n",
+           "{",paste(dim(ct.refr),collapse='x'),"} != {",length(HC.steps),"x",max(HC.steps)))
+    }
+    #}}}
+    #Training counts {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n       -Training counts per cluster")
+    }
+    if (count.variable.t=='') { 
+      ct.train<-matrixStats::colTabulates(train.somclust,values=1:max(HC.steps))
+    } else {
+      if (nrow(train.somclust)!=nrow(train.cat)) { 
+        stop(paste("somclust and catalogue for training are of different lengths?!\n",
+             nrow(train.somclust),"!=",nrow(train.cat),'\n'))
+      }
+      ct.train<-colWeightedTabulates(train.somclust,w=train.cat[[count.variable.t]],values=1:max(HC.steps))
+    }
+    #}}}
+    #Training mean zs {{{
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n       -Training <z> per cluster")
+    }
+    muz.train<-colWeightedTabulates(train.somclust,w=train.cat[[zt.label]],values=1:max(HC.steps))/ct.train
+    #}}}
+    #}}}
   }
-  #}}}
-  #Training mean zs {{{
-  if (!quiet) { 
-    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-    short.timer<-proc.time()[3]
-    cat("\n       -Training <z> per cluster")
-  }
-  muz.train<-colWeightedTabulates(train.somclust,w=train.cat[[zt.label]],values=1:max(HC.steps))/ct.train
   #}}}
   #Cluster Weights {{{
   if (!quiet) { 
@@ -1249,24 +1475,62 @@ if (optimise.HCs) {
   wt.final[which(!is.finite(wt.final))]<-0
   #}}}
   #Calculate the mean-z for each HC step {{{
+  if (do.QC) { 
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n       -Change in mean-z a.f.o. cluster with QC")
+    }
+    muz<-rowSums(ct.train*qc.vals*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*qc.vals*wt.final,na.rm=TRUE)
+    dneff<-rowSums(ctsq.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)/
+           rowSums(ct.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/(
+           rowSums(ctsq.refr,na.rm=TRUE)/rowSums(ct.refr,na.rm=TRUE)^2)
+  } else { 
+    if (!quiet) { 
+      cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+      short.timer<-proc.time()[3]
+      cat("\n       -Change in mean-z a.f.o. cluster")
+    }
+    muz<-rowSums(ct.train*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*wt.final,na.rm=TRUE)
+    dneff<-rowSums(ctsq.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)/
+           rowSums(ct.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/(
+           rowSums(ctsq.refr,na.rm=TRUE)/rowSums(ct.refr,na.rm=TRUE)^2)
+  }
+  #}}}
+  #Notify  {{{
   if (!quiet) { 
     cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
     short.timer<-proc.time()[3]
-    cat("\n       -Change in mean-z a.f.o. cluster")
+    cat("\n       - Saving statistics")
   }
-  muz<-rowSums(ct.train*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*wt.final,na.rm=TRUE)
+  #}}}
+  #Save the statistics {{{
+  HCoptim<-list(ct.train=ct.train,ct.refr=ct.refr,ctsq.refr=ctsq.refr,muz.train=muz.train,wt.final=wt.final,HC.steps=HC.steps,muz=muz,dneff=dneff)
+  if (do.QC) HCoptim$qc.vals<-qc.vals
+  save(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_HCoptim.Rdata'),output.file[loop.num],fixed=TRUE)),HCoptim)
+  #}}}
+  #Notify  {{{
+  if (!quiet) { 
+    cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
+    short.timer<-proc.time()[3]
+    cat("\n       - Determine Optimal Nclust")
+  }
   #}}}
   #Select the optimal HC step {{{
   muz.fiducial<-muz[which(HC.steps==factor.nbins)]
+  dneff.fiducial<-dneff[which(HC.steps==factor.nbins)]
   HCs.possible<-HC.steps[which(abs(muz-muz.fiducial)<=optimize.z.threshold)]
   HC.optimal<-min(HCs.possible)
   muz.optimal<-muz[which(HC.steps==HC.optimal)]
+  dneff.optimal<-dneff[which(HC.steps==HC.optimal)]
   if (!quiet) { 
     cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
     short.timer<-proc.time()[3]
     cat(paste0("\n       -mean-z range: <z> in [",paste(round(digits=3,range(muz,na.rm=T)),collapse=','),"]"))
     cat(paste0("\n       -Fiducial mu_z: <z> = ",round(digits=3,muz.fiducial)," @ factor.nbins = ",factor.nbins))
+    cat(paste0("\n       -Fiducial dneff: Delta neff = ",round(digits=3,dneff.fiducial)," @ factor.nbins = ",factor.nbins))
     cat(paste0("\n       -Optimal mu_z:  <z> = ",round(digits=3,muz.optimal)," @ factor.nbins = ",HC.optimal))
+    cat(paste0("\n       -Optimal dneff: Delta neff = ",round(digits=3,dneff.optimal)," @ factor.nbins = ",factor.nbins))
     cat(paste0("\n       -Updating training and reference cluster assignments with factor.nbins = ",HC.optimal))
   }
   #}}}
@@ -1483,7 +1747,7 @@ if (do.zcalib) {
   #}}}
   #Run the zcalib expression per-group {{{
   #Seperate the zcalib expression into individual terms {{{
-  split.expr<-split.expr(zcalib.expr,ignore=c('abs','sqrt',',na.rm'))
+  split.expr<-split.expr(zcalib.expr,ignore=c('abs','na.rm','cbind','rbind','rowMaxs','colMaxs'))
   split.names<-names(split.expr$components)
   keep<-rep(TRUE,length(split.names))
   for (ind in 1:length(split.names)) { 
@@ -1623,7 +1887,7 @@ if (do.QC) {
   #}}}
   #Run the QC expression per-group {{{
   #Seperate the QC expression into individual terms {{{
-  split.expr<-split.expr(qc.expr,ignore='abs')
+  split.expr<-split.expr(qc.expr,ignore=c('abs','na.rm','cbind','rbind','rowMaxs','colMaxs'))
   split.names<-names(split.expr$components)
   keep<-rep(TRUE,length(split.names))
   for (ind in 1:length(split.names)) { 
