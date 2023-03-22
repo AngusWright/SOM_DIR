@@ -690,16 +690,16 @@ while (length(inputs)!=0) {
 if (!exists("qc.expr") & do.QC) {
   if (count.variable.t=="" & count.variable.r=="") { 
     #Straight mean for train.cat and refr.cat
-    qc.expr<-"abs(mean(train.cat[[zt.label]])-mean(refr.cat[[zr.label]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
+    qc.expr<-"abs(mean(train.cat[[zt.label]])-mean(refr.cat[[zr.label]]))<=matrixStats::rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   } else if (count.variable.r=="") { 
     #Weighted mean for train.cat & Straight mean for refr.cat 
-    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-mean(refr.cat[[zr.label]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
+    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-mean(refr.cat[[zr.label]]))<=matrixStats::rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   } else if (count.variable.t=="") { 
     #Straight mean for train.cat & Weighted mean for refr.cat 
-    qc.expr<-"abs(mean(train.cat[[zt.label]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
+    qc.expr<-"abs(mean(train.cat[[zt.label]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=matrixStats::rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   } else {
     #Weighted mean for train.cat & Weighted mean for refr.cat 
-    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
+    qc.expr<-"abs(weighted.mean(train.cat[[zt.label]],train.cat[[count.variable.t]])-weighted.mean(refr.cat[[zr.label]],refr.cat[[count.variable.r]]))<=matrixStats::rowMaxs(cbind(5*mad(full.train.cat[[zt.label]]-full.train.cat[[zr.label]]),0.4),na.rm=T)" 
   }
 }
 #}}}
@@ -1193,7 +1193,7 @@ if (optimise.HCs) {
       }
       #}}}
       #Seperate the QC expression into individual terms {{{
-      split.expr<-split.expr(qc.expr,ignore=c('abs','na.rm','cbind','rbind','rowMaxs','colMaxs'))
+      split.expr<-split.expr(qc.expr,ignore=c('abs','na.rm','cbind','rbind','matrixStats::rowMaxs','colMaxs'))
       split.names<-names(split.expr$components)
       keep<-rep(TRUE,length(split.names))
       for (ind in 1:length(split.names)) { 
@@ -1291,7 +1291,7 @@ if (optimise.HCs) {
                                               expr.label=names(stat.expression),
                                               n.cores=som.cores,n.cluster.bins=prod(som.dim),quiet=TRUE)
     #Add to the QC frame {{{
-    qc.frame<-as.data.table(cbind(qc.frame,refr.cell.props$property[,-which(colnames(refr.cell.props$property)=='group.id')]))
+    qc.frame<-as.data.table(cbind(qc.frame,refr.cell.props$property[,-which(colnames(refr.cell.props$property)=='group.id'),drop=F]))
     #}}}
     #}}}
     #If needed, add full catalogue properties to QC frame {{{
@@ -1747,7 +1747,7 @@ if (do.zcalib) {
   #}}}
   #Run the zcalib expression per-group {{{
   #Seperate the zcalib expression into individual terms {{{
-  split.expr<-split.expr(zcalib.expr,ignore=c('abs','na.rm','cbind','rbind','rowMaxs','colMaxs'))
+  split.expr<-split.expr(zcalib.expr,ignore=c('abs','na.rm','cbind','rbind','matrixStats::rowMaxs','colMaxs'))
   split.names<-names(split.expr$components)
   keep<-rep(TRUE,length(split.names))
   for (ind in 1:length(split.names)) { 
@@ -1796,7 +1796,7 @@ if (do.zcalib) {
     if (is.null(zcalib.frame)) { 
       zcalib.frame<-as.data.table(refr.zcalib.vals$property)
     } else { 
-      zcalib.frame<-as.data.table(cbind(zcalib.frame,refr.zcalib.vals$property[,-which(colnames(refr.zcalib.vals$property)=='group.id')]))
+      zcalib.frame<-as.data.table(cbind(zcalib.frame,refr.zcalib.vals$property[,-which(colnames(refr.zcalib.vals$property)=='group.id'),drop=F]))
     }
     #}}}
   }
@@ -1887,7 +1887,7 @@ if (do.QC) {
   #}}}
   #Run the QC expression per-group {{{
   #Seperate the QC expression into individual terms {{{
-  split.expr<-split.expr(qc.expr,ignore=c('abs','na.rm','cbind','rbind','rowMaxs','colMaxs'))
+  split.expr<-split.expr(qc.expr,ignore=c('abs','na.rm','cbind','rbind','matrixStats::rowMaxs','colMaxs'))
   split.names<-names(split.expr$components)
   keep<-rep(TRUE,length(split.names))
   for (ind in 1:length(split.names)) { 
@@ -1936,7 +1936,7 @@ if (do.QC) {
     if (is.null(qc.frame)) { 
       qc.frame<-as.data.table(refr.qc.vals$property)
     } else { 
-      qc.frame<-as.data.table(cbind(qc.frame,refr.qc.vals$property[,-which(colnames(refr.qc.vals$property)=='group.id')]))
+      qc.frame<-as.data.table(cbind(qc.frame,refr.qc.vals$property[,-which(colnames(refr.qc.vals$property)=='group.id'),drop=F]))
     }
     #}}}
   }
