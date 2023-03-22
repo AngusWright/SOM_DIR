@@ -2236,7 +2236,7 @@ if(!quiet) {
 }
 #Output the training catalogue /*fold*/ {{{
 print(paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)))
-write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)),train.cat,quote=F,row.names=F)
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)),train.cat,quote=F,row.names=F,extname='OBJECTS')
 #/*fend*/}}}
 #Notify /*fold*/ {{{
 if(!quiet) { 
@@ -2250,7 +2250,7 @@ if(!quiet) {
   timer<-proc.time()[3]
 }
 #Output the reference catalogue /*fold*/ {{{
-write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)),refr.cat,quote=F,row.names=F)
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)),refr.cat,quote=F,row.names=F,extname='OBJECTS')
 #/*fend*/}}}
 #Notify /*fold*/ {{{
 if(!quiet) { 
