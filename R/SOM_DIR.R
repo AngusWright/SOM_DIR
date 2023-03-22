@@ -1489,9 +1489,9 @@ if (optimise.HCs) {
       cat("\n       -Change in mean-z a.f.o. cluster with QC")
     }
     muz<-rowSums(ct.train*qc.vals*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*qc.vals*wt.final,na.rm=TRUE)
-    dneff<-rowSums(ct.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/
-           rowSums(ctsq.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)/(
-           rowSums(ct.refr,na.rm=TRUE)^2/rowSums(ctsq.refr,na.rm=TRUE))
+    mask<-ifelse(wt.final>0,1,0)
+    dneff<-(rowSums(ct.refr*qc.vals*mask,na.rm=TRUE)^2/rowSums(ctsq.refr*qc.vals*mask,na.rm=TRUE))/
+           (rowSums(ct.refr             ,na.rm=TRUE)^2/rowSums(ctsq.refr             ,na.rm=TRUE))
   } else { 
     if (!quiet) { 
       cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
@@ -1499,9 +1499,9 @@ if (optimise.HCs) {
       cat("\n       -Change in mean-z a.f.o. cluster")
     }
     muz<-rowSums(ct.train*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*wt.final,na.rm=TRUE)
-    dneff<-rowSums(ct.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/
-           rowSums(ctsq.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)/(
-           rowSums(ct.refr,na.rm=TRUE)^2/rowSums(ctsq.refr,na.rm=TRUE))
+    mask<-ifelse(wt.final>0,1,0)
+    dneff<-(rowSums(ct.refr*mask,na.rm=TRUE)^2/rowSums(ctsq.refr*mask,na.rm=TRUE))/
+           (rowSums(ct.refr     ,na.rm=TRUE)^2/rowSums(ctsq.refr     ,na.rm=TRUE))
   }
   #}}}
   #Notify  {{{
@@ -2013,7 +2013,9 @@ if (do.QC) {
     goodgroups<-qc.result$group.id[which(qc.result$QCeval)]
     meanz.orig<-weighted.mean(train.cat[[zt.label]],train.cat$SOMweight)
     if (count.variable.r!=""){ 
-      neff.orig<-sum(refr.cat[[count.variable.r]]*ifelse(refr.cat$SOMweight>0,1,0))/sum(refr.cat[[count.variable.r]])
+      count<-refr.cat[[count.variable.r]]
+      mask<-ifelse(refr.cat$SOMweight>0,1,0)
+      neff.orig<-(sum(count*mask)^2/sum((count*mask)^2))/(sum(count)^2/sum(count^2))
     } else { 
       neff.orig<-length(which(refr.cat$SOMweight>0))/nrow(refr.cat)
     } 
@@ -2023,7 +2025,9 @@ if (do.QC) {
     refr.cat$QCFlag<-ifelse(refr.cat$GroupFactor%in%goodgroups,0,1)
     meanz.new<-weighted.mean(train.cat[[zt.label]],train.cat$SOMweight)
     if (count.variable.r!=""){ 
-      neff.new<-sum(refr.cat[[count.variable.r]]*ifelse(refr.cat$SOMweight>0,1,0))/sum(refr.cat[[count.variable.r]])
+      count<-refr.cat[[count.variable.r]]
+      mask<-ifelse(refr.cat$SOMweight>0,1,0)
+      neff.new<-(sum(count*mask)^2/sum((count*mask)^2))/(sum(count)^2/sum(count^2))
     } else { 
       neff.new<-length(which(refr.cat$SOMweight>0))/nrow(refr.cat)
     } 
