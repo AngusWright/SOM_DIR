@@ -1124,6 +1124,13 @@ if (factor.nbins>=prod(som.dim)) {
   factor.nbins<-prod(som.dim)
 }
 #/*fend*/}}}
+#If optimising HCs, save the original factor.nbins {{{
+if (optimise.HCs & !exists("factor.nbins.original")) { 
+  factor.nbins.original<-factor.nbins
+} else if (optimise.HCs) { 
+  factor.nbins<-factor.nbins.original
+}
+#}}}
 #Get the training positions from the trained SOM /*fold*/ {{{
 train.som<-generate.kohgroups(som=train.som,n.cluster.bins=factor.nbins,
                              train.expr=factor.label,data.missing=data.missing,
@@ -1530,7 +1537,7 @@ if (optimise.HCs) {
     cat(paste0("\n       -Fiducial mu_z: <z> = ",round(digits=3,muz.fiducial)," @ factor.nbins = ",factor.nbins))
     cat(paste0("\n       -Fiducial dneff: Delta neff = ",round(digits=3,dneff.fiducial)," @ factor.nbins = ",factor.nbins))
     cat(paste0("\n       -Optimal mu_z:  <z> = ",round(digits=3,muz.optimal)," @ factor.nbins = ",HC.optimal))
-    cat(paste0("\n       -Optimal dneff: Delta neff = ",round(digits=3,dneff.optimal)," @ factor.nbins = ",factor.nbins))
+    cat(paste0("\n       -Optimal dneff: Delta neff = ",round(digits=3,dneff.optimal)," @ factor.nbins = ",HC.optimal))
     cat(paste0("\n       -Updating training and reference cluster assignments with factor.nbins = ",HC.optimal))
   }
   #}}}
