@@ -1482,9 +1482,9 @@ if (optimise.HCs) {
       cat("\n       -Change in mean-z a.f.o. cluster with QC")
     }
     muz<-rowSums(ct.train*qc.vals*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*qc.vals*wt.final,na.rm=TRUE)
-    dneff<-rowSums(ctsq.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)/
-           rowSums(ct.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/(
-           rowSums(ctsq.refr,na.rm=TRUE)/rowSums(ct.refr,na.rm=TRUE)^2)
+    dneff<-rowSums(ct.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/
+           rowSums(ctsq.refr*qc.vals*ifelse(wt.final>0,1,0),na.rm=TRUE)/(
+           rowSums(ct.refr,na.rm=TRUE)^2/rowSums(ctsq.refr,na.rm=TRUE))
   } else { 
     if (!quiet) { 
       cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
@@ -1492,9 +1492,9 @@ if (optimise.HCs) {
       cat("\n       -Change in mean-z a.f.o. cluster")
     }
     muz<-rowSums(ct.train*wt.final*muz.train,na.rm=TRUE)/rowSums(ct.train*wt.final,na.rm=TRUE)
-    dneff<-rowSums(ctsq.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)/
-           rowSums(ct.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/(
-           rowSums(ctsq.refr,na.rm=TRUE)/rowSums(ct.refr,na.rm=TRUE)^2)
+    dneff<-rowSums(ct.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)^2/
+           rowSums(ctsq.refr*ifelse(wt.final>0,1,0),na.rm=TRUE)/(
+           rowSums(ct.refr,na.rm=TRUE)^2/rowSums(ctsq.refr,na.rm=TRUE))
   }
   #}}}
   #Notify  {{{
