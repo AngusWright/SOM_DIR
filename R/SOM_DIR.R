@@ -792,8 +792,6 @@ if (length(addstr)!=n.catalogues) { addstr<-rep(addstr,n.catalogues) }
 output.ending<-vecsplit(output.file,'.',-1,fixed=T)
 #/*fend*/}}}
 
-print(output.path)
-
 for (catpath.count in 1:n.catalogues) { 
 #Define the training and reference catalogue paths {{{
 train.catpath<-train.catalogues[catpath.count]
@@ -910,17 +908,24 @@ if (catpath.count!=1 && refr.catalogues[catpath.count-1]==refr.catpath) {
     timer<-proc.time()[3]
   }
 } else { 
-  if (!quiet) { 
-    cat(paste("  > Reading Reference Catalogue")) 
-    timer<-proc.time()[3]
-  }
-  if (short.write) { 
-    cols<-c(unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE)),zr.label)
-    if (count.variable.r!="") { cols<-c(cols,count.variable.r) }
-    refr.cat<-read.file(refr.catpath,cols=cols)
+  if (only.som) { 
+    if (!quiet) { 
+      cat(paste("  > Skipping Reference Catalogue Read (only training a SOM!)")) 
+      timer<-proc.time()[3]
+    }
   } else { 
-    refr.cat<-read.file(refr.catpath)
-  } 
+    if (!quiet) { 
+      cat(paste("  > Reading Reference Catalogue")) 
+      timer<-proc.time()[3]
+    }
+    if (short.write) { 
+      cols<-c(unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE)),zr.label)
+      if (count.variable.r!="") { cols<-c(cols,count.variable.r) }
+      refr.cat<-read.file(refr.catpath,cols=cols)
+    } else { 
+      refr.cat<-read.file(refr.catpath)
+    } 
+  }
 }
 #Make sure that the table is a data.table
 if (!is.data.table(refr.cat)){ 
