@@ -867,8 +867,9 @@ if (catpath.count!=1 && train.catalogues[catpath.count-1]==train.catpath) {
     cat(paste("  > Reading Training Catalogue")) 
     timer<-proc.time()[3]
   }
-  if (short.write) { 
-    cols<-c(unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE)),zt.label,zr.label)
+  if (short.write | only.som) { 
+    cols<-unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE))
+    if (!only.som) { cols<-c(cols,zt.label,zr.label) }
     if (count.variable.t!="") { cols<-c(cols,count.variable.t) }
     train.cat<-read.file(train.catpath,cols=cols)
   } else { 
