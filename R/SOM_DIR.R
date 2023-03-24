@@ -913,6 +913,8 @@ if (catpath.count!=1 && refr.catalogues[catpath.count-1]==refr.catpath) {
     if (!quiet) { 
       cat(paste("  > Skipping Reference Catalogue Read (only training a SOM!)")) 
       timer<-proc.time()[3]
+      #Assign the training cat to the reference catalogue (won't be used meaningfully) 
+      refr.cat<-train.cat
     }
   } else { 
     if (!quiet) { 
