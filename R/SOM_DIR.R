@@ -316,7 +316,7 @@ optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
 optimize.z.threshold<-0.01
 loop.start<-1
 plot<-0
-sparse.min.num<-1
+sparse.min.density<-50
 sparse.var<-NULL
 seed<-666
 res<-200
@@ -1041,6 +1041,11 @@ if (length(factor.label)<2) {
       #/*fend*/}}}
     }
     #/*fend*/}}}
+    #Notify /*fold*/ {{{
+    if (!quiet) { 
+      short.timer<-proc.time()[3]
+      cat("\n    -> Saving SOM ")
+    }#/*fend*/}}}
     #Save the SOM to file /*fold*/ {{{
     save(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_SOMdata.Rdata'),output.file[loop.num],fixed=TRUE)),train.som)
     #/*fend*/}}}
