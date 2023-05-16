@@ -311,13 +311,13 @@ WtBuRd<-colorRampPalette(c('white',rev(brewer.pal(10,"RdBu")[-(5)])))
 
 #Read the options /*fold*/ {{{
 #Default parameter values /*fold*/ {{{
-only.som<-force<-sparse.som<-reuse<-useMult<-quiet<-FALSE
+refr.truth<-only.som<-force<-sparse.som<-reuse<-useMult<-quiet<-FALSE
 optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
 optimize.z.threshold<-0.01
 loop.start<-1
 plot<-0
 sparse.min.density<-50
-sparse.var<-NULL
+som.data.file<-sparse.var<-NULL
 seed<-666
 res<-200
 min.gal.per.core<-1000
@@ -543,6 +543,11 @@ while (length(inputs)!=0) {
     inputs<-inputs[-1]
     short.write<-TRUE
     #/*fend*/}}}
+  } else if (inputs[1]=='--refr.truth') {
+    #Define whether we want to compute the true z of the reference sample /*fold*/ {{{
+    inputs<-inputs[-1]
+    refr.truth<-TRUE
+    #/*fend*/}}}
   } else if (inputs[1]=='--optimise') {
     #Define whether we want to optimise the number of HCs for representation /*fold*/ {{{
     inputs<-inputs[-1]
@@ -579,11 +584,20 @@ while (length(inputs)!=0) {
     #/*fend*/}}}
   } else if (inputs[1]=='--old.som') {
     #Load an already calculated som from file /*fold*/ {{{
+    #inputs<-inputs[-1]
+    #som.data.file<-inputs[1]
+    #inputs<-inputs[-1]
+    #reuse<-TRUE
     inputs<-inputs[-1]
-    som.data.file<-inputs[1]
-    inputs<-inputs[-1]
+    if (any(grepl('^-',inputs))) { 
+      som.data.file<-inputs[1:(which(grepl('^-',inputs))[1]-1)]
+      inputs<-inputs[-(1:(which(grepl('^-',inputs))[1]-1))]
+    } else { 
+      som.data.file<-inputs
+      inputs<-NULL
+    } 
     reuse<-TRUE
-    #/*fend*/}}}
+    #/*fold*/}}}
   } else if (inputs[1]=='--som.dim'|inputs[1]=='-sd') {
     #Define the SOM dimension /*fold*/ {{{
     inputs<-inputs[-1]
@@ -630,6 +644,12 @@ while (length(inputs)!=0) {
     #Define the number of SOM iterations /*fold*/ {{{
     inputs<-inputs[-1]
     som.iter<-as.numeric(inputs[1])
+    inputs<-inputs[-1]
+    #/*fend*/}}}
+  } else if (inputs[1]=='--data.missing') {
+    #Define the value for missing data /*fold*/ {{{
+    inputs<-inputs[-1]
+    data.missing<-as.numeric(inputs[1])
     inputs<-inputs[-1]
     #/*fend*/}}}
   } else if (inputs[1]=='--data.threshold') {
@@ -711,7 +731,7 @@ if (!dir.exists(output.path)) {
 #/*fend*/}}}
 
 #Check for the input catalogues /*fold*/ {{{
-n.catalogues<-max(length(train.catalogues),length(refr.catalogues))
+n.catalogues<-max(length(train.catalogues),length(refr.catalogues),length(som.data.file))
 if (n.catalogues==0) { 
   stop("No catalogues provided! Call Syntax:\nRscript SOM_DIR.R [options] -i <InputReferenceCat> <InputTrainingCat1> ...") 
 }
@@ -719,7 +739,7 @@ if (n.catalogues==0) {
 if (length(train.catalogues)!=n.catalogues){ 
   if (length(train.catalogues)==1) { 
     train.catalogues<-rep(train.catalogues,n.catalogues)
-  } else if (length(refr.catalogues)%%length(train.catalogues)==0) { 
+  } else if (n.catalogues%%length(train.catalogues)==0) { 
     train.catalogues<-rep(train.catalogues,n.catalogues/length(train.catalogues))
   } else { 
     stop("Input training catalogue list is neither length 1, length(reference catalogue list), nor a factor of length(reference catalogue list)")
@@ -728,10 +748,23 @@ if (length(train.catalogues)!=n.catalogues){
 if (length(refr.catalogues)!=n.catalogues){ 
   if (length(refr.catalogues)==1) { 
     refr.catalogues<-rep(refr.catalogues,n.catalogues)
-  } else if (length(train.catalogues)%%length(refr.catalogues)==0) { 
+  } else if (n.catalogues%%length(refr.catalogues)==0) { 
     refr.catalogues<-rep(refr.catalogues,n.catalogues/length(refr.catalogues))
   } else { 
     stop("Input reference catalogue list is neither length 1, length(reference catalogue list), nor a factor of length(reference catalogue list)")
+  }
+}
+#}}}
+#Make sure input SOM lists have matching length {{{
+if (reuse) { 
+  if (length(som.data.file)!=n.catalogues){ 
+    if (length(som.data.file)==1) { 
+      som.data.file<-rep(som.data.file,n.catalogues)
+    } else if (n.catalogues%%length(som.data.file)==0) { 
+      som.data.file<-rep(som.data.file,n.catalogues/length(som.data.file))
+    } else { 
+      stop("Input reference catalogue list is neither length 1, length(reference catalogue list), nor a factor of length(reference catalogue list)")
+    }
   }
 }
 #}}}
@@ -796,6 +829,9 @@ for (catpath.count in 1:n.catalogues) {
 #Define the training and reference catalogue paths {{{
 train.catpath<-train.catalogues[catpath.count]
 refr.catpath<-refr.catalogues[catpath.count]
+if (reuse) {
+  som.datfile<-som.data.file[catpath.count]
+}
 #}}}
 #Loop through catalogues /*fold*/ {{{
 loop.num<-loop.num+1
@@ -871,6 +907,7 @@ if (catpath.count!=1 && train.catalogues[catpath.count-1]==train.catpath) {
     cols<-unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE))
     if (!only.som) { cols<-c(cols,zt.label,zr.label) }
     if (count.variable.t!="") { cols<-c(cols,count.variable.t) }
+    print(cols)
     train.cat<-read.file(train.catpath,cols=cols)
   } else { 
     train.cat<-read.file(train.catpath)
@@ -923,7 +960,9 @@ if (catpath.count!=1 && refr.catalogues[catpath.count-1]==refr.catpath) {
     }
     if (short.write) { 
       cols<-c(unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE)),zr.label)
+      if (refr.truth) { cols<-c(cols,zt.label) }
       if (count.variable.r!="") { cols<-c(cols,count.variable.r) }
+      print(cols)
       refr.cat<-read.file(refr.catpath,cols=cols)
     } else { 
       refr.cat<-read.file(refr.catpath)
@@ -978,7 +1017,7 @@ if (length(factor.label)<2) {
   }
   #/*fend*/}}}
   #Load or Generate the SOM /*fold*/ {{{
-  if (reuse && file.exists(som.data.file)) {
+  if (reuse && file.exists(som.datfile)) {
     #Use a previously constructed SOM /*fold*/ {{{
     #Notify /*fold*/ {{{
     if (!quiet) { 
@@ -987,7 +1026,7 @@ if (length(factor.label)<2) {
       cat("\n    -> loading previously calculated SOM (!!)")
     }#/*fend*/}}}
     #Load the SOM /*fold*/ {{{
-    name<-load(som.data.file)
+    name<-load(som.datfile)
     if (name!="train.som") { 
       train.som<-get(name)
     }
@@ -1016,7 +1055,7 @@ if (length(factor.label)<2) {
     #Construct a new SOM /*fold*/ {{{
     #If we wanted to reuse, stop with error /*fold*/ {{{
     if (reuse) { 
-      stop("SOM data file does not exist! Cannot use previous SOM!\n",som.data.file)
+      stop("SOM data file does not exist! Cannot use previous SOM!\n",som.datfile)
     }
     #/*fend*/}}}
     #Run the training /*fold*/ {{{
@@ -1208,8 +1247,14 @@ if (optimise.HCs) {
       if (zt.label!=''&!zt.label%in%colnames(train.cat)) { 
         stop("zt.label is defined but is not present in the training catalogue!")
       }
+      if (zr.label!=''&!zr.label%in%colnames(train.cat)) { 
+        stop("zr.label is defined but is not present in the training catalogue!")
+      }
       if (zr.label!=''&!zr.label%in%colnames(refr.cat)) { 
         stop("zr.label is defined but is not present in the reference catalogue!")
+      }
+      if (refr.truth & zt.label!='' & !zt.label%in%colnames(refr.cat)) { 
+        stop("zt.label is defined but is not present in the reference catalogue!")
       }
       #}}}
       #Seperate the QC expression into individual terms {{{
@@ -1297,11 +1342,19 @@ if (optimise.HCs) {
       stat.expression<-c(count="nrow(data)",countsq="nrow(data)")
       stat.expression<-c(stat.expression,
                          meanz="mean(data[[zr.label]],na.rm=T)")
+      if (refr.truth) { 
+        stat.expression<-c(stat.expression,
+                           meanz_true="mean(data[[zt.label]],na.rm=T)")
+      }
     } else { 
       stat.expression<-c(count="sum(data[[count.variable.r]],na.rm=T)",
                          countsq="sum(data[[count.variable.r]]^2,na.rm=T)")
       stat.expression<-c(stat.expression,
                          meanz="weighted.mean(data[[zr.label]],data[[count.variable.r]],na.rm=T)")
+      if (refr.truth) { 
+        stat.expression<-c(stat.expression,
+                         meanz_true="weighted.mean(data[[zt.label]],data[[count.variable.r]],na.rm=T)")
+      }
     } 
     if (do.QC) { 
       stat.expression<-c(stat.expression,refr.expression)
@@ -1355,7 +1408,13 @@ if (optimise.HCs) {
       countsq<-sapply(split(refr.cell.props$property$countsq,group.fact),sum)
       meanz<-sapply(split(refr.cell.props$property$meanz*refr.cell.props$property$count,group.fact),sum,na.rm=T)
       meanz<-meanz/count
-      return=data.frame(count=count,countsq=countsq,meanz=meanz)
+      if (refr.truth) { 
+        meanz_true<-sapply(split(refr.cell.props$property$meanz_true*refr.cell.props$property$count,group.fact),sum,na.rm=T)
+        meanz_true<-meanz_true/count
+        return=data.frame(count=count,countsq=countsq,meanz=meanz,meanz_true=meanz_true)
+      } else { 
+        return=data.frame(count=count,countsq=countsq,meanz=meanz)
+      }
     }
     #}}}
     if (do.QC) { 
@@ -1376,12 +1435,16 @@ if (optimise.HCs) {
       }
       #}}}
       #Reformat the results {{{
-      qc.vals<-ctsq.refr<-ct.refr<-ct.train<-muz.train<-matrix(NA,nrow=length(HC.steps),ncol=max(HC.steps))
+      qc.vals<-ctsq.refr<-ct.refr<-ct.train<-muz.refr<-muz.train<-matrix(NA,nrow=length(HC.steps),ncol=max(HC.steps))
       for (step in 1:length(HC.steps)) { 
         #Training Counts per setup 
         ct.train[step,]<-train.res[[step]]$count
         #Training meanz per setup 
         muz.train[step,]<-train.res[[step]]$meanz
+        if (refr.truth) { 
+          #Reference meanz per setup 
+          muz.refr[step,]<-refr.res[[step]]$meanz_true
+        }
         #Reference Counts per setup 
         ct.refr[step,]<-refr.res[[step]]$count
         #Reference Counts per setup 
@@ -1392,12 +1455,16 @@ if (optimise.HCs) {
       #}}}
     } else { 
       #Reformat the results {{{
-      ctsq.refr<-ct.refr<-ct.train<-muz.train<-matrix(NA,nrow=length(HC.steps),ncol=max(HC.steps))
+      ctsq.refr<-ct.refr<-ct.train<-muz.refr<-muz.train<-matrix(NA,nrow=length(HC.steps),ncol=max(HC.steps))
       for (step in 1:length(HC.steps)) { 
         #Training Counts per setup 
         ct.train[step,]<-train.res[[step]]$count
         #Training meanz per setup 
         muz.train[step,]<-train.res[[step]]$meanz
+        if (refr.truth) { 
+          #Reference meanz per setup 
+          muz.refr[step,]<-refr.res[[step]]$meanz_true
+        }
         #Reference Counts per setup 
         ct.refr[step,]<-refr.res[[step]]$count
         #Reference Counts squared per setup 
@@ -1505,6 +1572,9 @@ if (optimise.HCs) {
     mask<-ifelse(wt.final>0,1,0)
     dneff<-(rowSums(ct.refr*qc.vals*mask,na.rm=TRUE)^2/rowSums(ctsq.refr*qc.vals*mask,na.rm=TRUE))/
            (rowSums(ct.refr             ,na.rm=TRUE)^2/rowSums(ctsq.refr             ,na.rm=TRUE))
+    if (refr.truth) { 
+      muz.true<-rowSums(ct.refr*qc.vals*mask*muz.refr,na.rm=TRUE)/rowSums(ct.refr*qc.vals*mask,na.rm=TRUE)
+    }
   } else { 
     if (!quiet) { 
       cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
@@ -1515,6 +1585,9 @@ if (optimise.HCs) {
     mask<-ifelse(wt.final>0,1,0)
     dneff<-(rowSums(ct.refr*mask,na.rm=TRUE)^2/rowSums(ctsq.refr*mask,na.rm=TRUE))/
            (rowSums(ct.refr     ,na.rm=TRUE)^2/rowSums(ctsq.refr     ,na.rm=TRUE))
+    if (refr.truth) { 
+      muz.true<-rowSums(ct.refr*mask*muz.refr,na.rm=TRUE)/rowSums(ct.refr*mask,na.rm=TRUE)
+    }
   }
   #}}}
   #Notify  {{{
@@ -1527,6 +1600,7 @@ if (optimise.HCs) {
   #Save the statistics {{{
   HCoptim<-list(ct.train=ct.train,ct.refr=ct.refr,ctsq.refr=ctsq.refr,muz.train=muz.train,wt.final=wt.final,HC.steps=HC.steps,muz=muz,dneff=dneff)
   if (do.QC) HCoptim$qc.vals<-qc.vals
+  if (refr.truth) { HCoptim$muz.true=muz.true }
   save(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_HCoptim.Rdata'),output.file[loop.num],fixed=TRUE)),HCoptim)
   #}}}
   #Notify  {{{
@@ -1542,14 +1616,24 @@ if (optimise.HCs) {
   HCs.possible<-HC.steps[which(abs(muz-muz.fiducial)<=optimize.z.threshold)]
   HC.optimal<-min(HCs.possible)
   muz.optimal<-muz[which(HC.steps==HC.optimal)]
+  if (refr.truth) {  
+    muz.true.fiducial<-muz.true[which(HC.steps==factor.nbins)]
+    muz.true.optimal<-muz.true[which(HC.steps==HC.optimal)] 
+  }
   dneff.optimal<-dneff[which(HC.steps==HC.optimal)]
   if (!quiet) { 
     cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
     short.timer<-proc.time()[3]
     cat(paste0("\n       -mean-z range: <z> in [",paste(round(digits=3,range(muz,na.rm=T)),collapse=','),"]"))
     cat(paste0("\n       -Fiducial mu_z: <z> = ",round(digits=3,muz.fiducial)," @ factor.nbins = ",factor.nbins))
+    if (refr.truth) { 
+      cat(paste0("\n       -Fiducial Bias: <z>-<z>_true = ",round(digits=3,muz.fiducial-muz.true.fiducial)," @ factor.nbins = ",factor.nbins))
+    }
     cat(paste0("\n       -Fiducial dneff: Delta neff = ",round(digits=3,dneff.fiducial)," @ factor.nbins = ",factor.nbins))
     cat(paste0("\n       -Optimal mu_z:  <z> = ",round(digits=3,muz.optimal)," @ factor.nbins = ",HC.optimal))
+    if (refr.truth) { 
+      cat(paste0("\n       -Optimal Bias: <z>-<z>_true = ",round(digits=3,muz.optimal-muz.true.optimal)," @ factor.nbins = ",HC.optimal))
+    }
     cat(paste0("\n       -Optimal dneff: Delta neff = ",round(digits=3,dneff.optimal)," @ factor.nbins = ",HC.optimal))
     cat(paste0("\n       -Updating training and reference cluster assignments with factor.nbins = ",HC.optimal))
   }
