@@ -52,7 +52,7 @@ require.and.load('matrixStats')
 require.and.load('data.table') 
 require.and.load('helpRfuncs','AngusWright') 
 require.and.load('FITSio') 
-require.and.load('LAMBDAR','AngusWright') 
+#require.and.load('LAMBDAR','AngusWright') 
 require.and.load('kohonen/kohonen','AngusWright') 
 EOF
 
