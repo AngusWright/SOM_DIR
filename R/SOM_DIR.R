@@ -818,19 +818,41 @@ if (!exists('output.file')) {
   }
   #/*fend*/}}}
 } else if (length(output.file)!=n.catalogues) { 
-  addstr<-paste0("_",1:n.catalogues)
+  #Number the output files by the number of recycles 
+  addstr<-paste0("_",floor((1:n.catalogues-1)/length(output.file))+1)
   output.file<-rep(output.file,n.catalogues)
 }
 if (length(addstr)!=n.catalogues) { addstr<-rep(addstr,n.catalogues) } 
 output.ending<-vecsplit(output.file,'.',-1,fixed=T)
 #/*fend*/}}}
 
-for (catpath.count in 1:n.catalogues) { 
+#Can we save time by changing the order? 
+nrep_train<-length(which(duplicated(train.catalogues)))
+nrep_refr<-length(which(duplicated(refr.catalogues)))
+#Check if we can save on read time 
+if (nrep_train > 0 & nrep_train > nrep_refr) { 
+  #There are repeated training catalogues, and no/fewer repeated refr catalogues 
+  #Sort the runs by training catalogues
+  run_order<-order(train.catalogues)
+  if (!quiet) { cat(paste("Running in order of the training catalogues, to avoid repeated IO\n")) }
+} else if (nrep_refr > 0 & nrep_refr > nrep_train) { 
+  #There are repeated training catalogues, and no/fewer repeated refr catalogues 
+  #Sort the runs by training catalogues
+  run_order<-order(refr.catalogues)
+  if (!quiet) { cat(paste("Running in order of the reference catalogues, to avoid repeated IO\n")) }
+} else { 
+  if (!quiet) { cat(paste("Running in input order; no IO speedup possible\n")) }
+  run_order<-1:n.catalogues
+}
+#Start the loop over the catalogues 
+catpath.index.prev<-1
+for (catpath.index in run_order) { 
+loop.timer<-proc.time()[3]
 #Define the training and reference catalogue paths {{{
-train.catpath<-train.catalogues[catpath.count]
-refr.catpath<-refr.catalogues[catpath.count]
+train.catpath<-train.catalogues[catpath.index]
+refr.catpath<-refr.catalogues[catpath.index]
 if (reuse) {
-  som.datfile<-som.data.file[catpath.count]
+  som.datfile<-som.data.file[catpath.index]
 }
 #}}}
 #Loop through catalogues /*fold*/ {{{
@@ -860,28 +882,28 @@ train.ending<-rev(strsplit(train.catnam,'.',fixed=TRUE)[[1]])[1]
 #/*fend*/}}}
 
 #Check if the output catalogue already exists /*fold*/ {{{
-if (grepl('.cat',output.file[loop.num],fixed=T)) {
+if (grepl('.cat',output.file[catpath.index],fixed=T)) {
   #Output an FITS catalogue /*fold*/ {{{
-  file =paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.fits'),output.file[loop.num],fixed=TRUE))
-  file2=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.fits'),output.file[loop.num],fixed=TRUE))
+  file =paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.fits'),output.file[catpath.index],fixed=TRUE))
+  file2=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.fits'),output.file[catpath.index],fixed=TRUE))
   #/*fend*/}}}
-} else if (grepl('.fits',output.file[loop.num],fixed=T)) {
+} else if (grepl('.fits',output.file[catpath.index],fixed=T)) {
   #Output an fits catalogue /*fold*/ {{{
-  file =paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.fits'),output.file[loop.num],fixed=TRUE))
-  file2=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.fits'),output.file[loop.num],fixed=TRUE))
+  file =paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.fits'),output.file[catpath.index],fixed=TRUE))
+  file2=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.fits'),output.file[catpath.index],fixed=TRUE))
   #/*fend*/}}}
-} else if (grepl('.Rdata',output.file[loop.num],fixed=T)) {
+} else if (grepl('.Rdata',output.file[catpath.index],fixed=T)) {
   #Output an Rdata catalogue /*fold*/ {{{
-  file =paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.Rdata'),output.file[loop.num],fixed=TRUE))
-  file2=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.Rdata'),output.file[loop.num],fixed=TRUE))
+  file =paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.Rdata'),output.file[catpath.index],fixed=TRUE))
+  file2=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.Rdata'),output.file[catpath.index],fixed=TRUE))
   #/*fend*/}}}
 } else { 
   #Output a CSV catalogue /*fold*/ {{{
-  file =paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.csv'),output.file[loop.num],fixed=TRUE))
-  file2=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.csv'),output.file[loop.num],fixed=TRUE))
+  file =paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.csv'),output.file[catpath.index],fixed=TRUE))
+  file2=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.csv'),output.file[catpath.index],fixed=TRUE))
   #/*fend*/}}}
 }
-somfile<-paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_SOMdata.Rdata'),output.file[loop.num],fixed=TRUE))
+somfile<-paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0(addstr[catpath.index],'_SOMdata.Rdata'),output.file[catpath.index],fixed=TRUE))
 if (file.exists(file) & file.exists(file2) | (only.som & file.exists(somfile))) { 
   if (!force) { 
     cat("  ### Output Catalogues already exist! Not using [--force], so skipping! ###\n")
@@ -893,7 +915,7 @@ if (file.exists(file) & file.exists(file2) | (only.som & file.exists(somfile))) 
 #/*fend*/}}}
 
 #Read in the input training catalogue /*fold*/ {{{
-if (catpath.count!=1 && train.catalogues[catpath.count-1]==train.catpath) { 
+if (loop.num!=loop.start && train.catalogues[catpath.index.prev]==train.catpath) { 
   if (!quiet) { 
     cat(paste("  > Skipping Training Catalogue Read (same as previous loop!)")) 
     timer<-proc.time()[3]
@@ -907,7 +929,7 @@ if (catpath.count!=1 && train.catalogues[catpath.count-1]==train.catpath) {
     cols<-unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE))
     if (!only.som) { cols<-c(cols,zt.label,zr.label) }
     if (count.variable.t!="") { cols<-c(cols,count.variable.t) }
-    print(cols)
+    #print(cols)
     train.cat<-read.file(train.catpath,cols=cols)
   } else { 
     train.cat<-read.file(train.catpath)
@@ -926,6 +948,12 @@ train.ending<-rev(strsplit(train.catnam,'.',fixed=TRUE)[[1]])[1]
 if (testing) {
   train.cat<-train.cat[runif(nrow(train.cat))<0.2,]
 }
+#Check for bad redshift values 
+if (any(train.cat[[zt.label]]<0)) { 
+  cat("(WARNING)")
+  warning("Truncating training redshifts to be >= 0!")
+  train.cat[[zt.label]][which(train.cat[[zt.label]]<0)]<-0
+}
 #Catalogue length/*fold*/ {{{
 train.cat.len<-nrow(train.cat)
 if (!quiet) { 
@@ -940,7 +968,7 @@ if (!quiet) {
 #/*fend*/}}}
 
 #Read in the input reference catalogue /*fold*/ {{{
-if (catpath.count!=1 && refr.catalogues[catpath.count-1]==refr.catpath) { 
+if (loop.num!=loop.start && refr.catalogues[catpath.index.prev]==refr.catpath) { 
   if (!quiet) { 
     cat(paste("  > Skipping Reference Catalogue Read (same as previous loop!)")) 
     timer<-proc.time()[3]
@@ -962,7 +990,7 @@ if (catpath.count!=1 && refr.catalogues[catpath.count-1]==refr.catpath) {
       cols<-c(unique(vecsplit(factor.label,"[+/-]|\\*",fixed=FALSE)),zr.label)
       if (refr.truth) { cols<-c(cols,zt.label) }
       if (count.variable.r!="") { cols<-c(cols,count.variable.r) }
-      print(cols)
+      #print(cols)
       refr.cat<-read.file(refr.catpath,cols=cols)
     } else { 
       refr.cat<-read.file(refr.catpath)
@@ -975,6 +1003,14 @@ if (!is.data.table(refr.cat)){
 }
 if (testing) {
   refr.cat<-refr.cat[runif(nrow(refr.cat))<0.2,]
+}
+if (refr.truth) {
+  #Check for bad redshift values 
+  if (any(refr.cat[[zt.label]]<0)) { 
+    cat("(WARNING)")
+    warning("Truncating reference truth redshifts to be >= 0!")
+    refr.cat[[zt.label]][which(refr.cat[[zt.label]]<0)]<-0
+  }
 }
 #Catalogue length
 refr.cat.len<-nrow(refr.cat)
@@ -1086,7 +1122,7 @@ if (length(factor.label)<2) {
       cat("\n    -> Saving SOM ")
     }#/*fend*/}}}
     #Save the SOM to file /*fold*/ {{{
-    save(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_SOMdata.Rdata'),output.file[loop.num],fixed=TRUE)),train.som)
+    save(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0(addstr[catpath.index],'_SOMdata.Rdata'),output.file[catpath.index],fixed=TRUE)),train.som)
     #/*fend*/}}}
     #Skip the rest of the measurements?! /*fold*/ {{{
     if (only.som) { 
@@ -1112,19 +1148,19 @@ if (length(factor.label)<2) {
       cat("\n    -> Plotting SOM figures")
     }#/*fend*/}}}
     #Plot the som codes /*fold*/ {{{
-    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_SOM_codes.png',output.file[loop.num],fixed=TRUE)),height=10*res,width=10*res,res=res)
+    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_SOM_codes.png',output.file[catpath.index],fixed=TRUE)),height=10*res,width=10*res,res=res)
     plot(train.som, type="codes",shape='straight',codeRendering='lines',border=NA)
     dev.off()
     #/*fend*/}}}
     #Plot the cluster makeup /*fold*/ {{{
     #Plot the changes at each iteration /*fold*/ {{{
-    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_SOM_changes.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=5*res,res=res)
+    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_SOM_changes.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=5*res,res=res)
     plot(train.som, type="changes")
     dev.off()
     #/*fend*/}}}
     if (plot>1) {
       #Plot the various SOM components /*fold*/ {{{
-      png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_SOM_props%02d.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=5*res,res=res)
+      png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_SOM_props%02d.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=5*res,res=res)
       #Set the margins /*fold*/ {{{
       par(mar=c(0,0,0,0))
       #/*fend*/}}}
@@ -1601,7 +1637,7 @@ if (optimise.HCs) {
   HCoptim<-list(ct.train=ct.train,ct.refr=ct.refr,ctsq.refr=ctsq.refr,muz.train=muz.train,wt.final=wt.final,HC.steps=HC.steps,muz=muz,dneff=dneff)
   if (do.QC) HCoptim$qc.vals<-qc.vals
   if (refr.truth) { HCoptim$muz.true=muz.true }
-  save(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_HCoptim.Rdata'),output.file[loop.num],fixed=TRUE)),HCoptim)
+  save(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0(addstr[catpath.index],'_HCoptim.Rdata'),output.file[catpath.index],fixed=TRUE)),HCoptim)
   #}}}
   #Notify  {{{
   if (!quiet) { 
@@ -1667,11 +1703,11 @@ if (optimise.HCs) {
 #Record the cluster assignments and write the SOMs to file {{{
 #Training Catalogue {{{
 train.cat$GroupFactor<-train.som$clust.classif
-save(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_SOMdata.Rdata'),output.file[loop.num],fixed=TRUE)),train.som)
+save(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0(addstr[catpath.index],'_SOMdata.Rdata'),output.file[catpath.index],fixed=TRUE)),train.som)
 #}}}
 #Reference Catalogue {{{
 refr.cat$GroupFactor<-refr.som$clust.classif
-save(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0(addstr[loop.num],'_refr_SOMdata.Rdata'),output.file[loop.num],fixed=TRUE)),refr.som)
+save(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0(addstr[catpath.index],'_refr_SOMdata.Rdata'),output.file[catpath.index],fixed=TRUE)),refr.som)
 #}}}
 #}}}
 #Plot the SOM and additional information /*fold*/ {{{
@@ -1683,19 +1719,19 @@ if (plot>0) {
     cat("\n    -> Plotting SOM figures")
   }#/*fend*/}}}
   #Plot the som codes /*fold*/ {{{
-  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_refr_SOM_codes.png',output.file[loop.num],fixed=TRUE)),height=10*res,width=10*res,res=res)
+  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_refr_SOM_codes.png',output.file[catpath.index],fixed=TRUE)),height=10*res,width=10*res,res=res)
   plot(refr.som, type="codes", bgcol=rainbow(factor.nbins)[train.som$cell.clust],shape='straight',codeRendering='lines',border=NA)
   add.cluster.boundaries(refr.som,train.som$cell.clust,lwd=3,col=hsv(1,0,0,0.8))
   dev.off()
   #/*fend*/}}}
   #Plot the changes at each iteration /*fold*/ {{{
-  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_refr_SOM_changes.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=5*res,res=res)
+  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_refr_SOM_changes.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=5*res,res=res)
   plot(refr.som, type="changes")
   dev.off()
   #/*fend*/}}}
   if (plot>1) { 
     #Plot the various SOM components /*fold*/ {{{
-    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_refr_SOM_props%02d.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=12*res,res=res)
+    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_refr_SOM_props%02d.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=12*res,res=res)
     #Set the margins /*fold*/ {{{
     par(mar=c(0,0,0,0))
     #/*fend*/}}}
@@ -1789,7 +1825,7 @@ if (refr.flag) {
 #}}}
 #Plot the SOM weights /*fold*/ {{{
 if (plot>0) {
-  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_train_SOMweights.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=5*res,res=res)
+  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_train_SOMweights.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=5*res,res=res)
   dens<-density(log10(train.cat$SOMweight),kernel='rect',from=-3,to=3,bw=0.1/sqrt(12),na.rm=TRUE)
   magplot(dens,xlab='SOMweight',ylab='PDF',unlog='x')
   dev.off()
@@ -1797,7 +1833,7 @@ if (plot>0) {
 #/*fend*/}}}
 #Plot the SOM weights /*fold*/ {{{
 if (plot>0) {
-  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_refr_SOMweights.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=5*res,res=res)
+  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_refr_SOMweights.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=5*res,res=res)
   dens<-density(log10(refr.cat$SOMweight),from=-5,to=1,bw=0.1/sqrt(12),kernel='rect',na.rm=TRUE)
   magplot(dens,xlab='SOMweight',ylab='PDF',unlog='x')
   dev.off()
@@ -1809,7 +1845,7 @@ if (plot>0) {
     wtrain.cell[which(train.som$cell.clust==i)]<-train.cat$SOMweight[which(train.cat$GroupFactor==i)[1]]
     wrefr.cell[which(train.som$cell.clust==i)]<-refr.cat$SOMweight[which(refr.cat$GroupFactor==i)[1]]
   }
-  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_SOMweights_paint.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=7*res,res=res)
+  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_SOMweights_paint.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=7*res,res=res)
   layout(cbind(1,2))
   plot(refr.som, type = "property", property = wrefr.cell,#zlim=c(0,1.5),
        main="SOMweight_refr", palette.name=scale.palette(wrefr.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
@@ -2150,7 +2186,7 @@ if (plot>0) {
   }
   #/*fend*/}}}
   #Plot the counts zoomed in /*fold*/ {{{
-  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_counts.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=10*res,res=res)
+  png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_counts.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=10*res,res=res)
   layout(cbind(1,2))
   train.count.tab<-table(train.som$unit.classif)
   refr.count.tab<-table(refr.som$unit.classif)
@@ -2177,7 +2213,7 @@ if (plot>0) {
   #/*fend*/}}}
   if (plot>1) { 
     #Plot the inferred z distributions /*fold*/ {{{
-    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_zz.png',output.file[loop.num],fixed=TRUE)),height=5*res,width=10*res,res=res)
+    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_zz.png',output.file[catpath.index],fixed=TRUE)),height=5*res,width=10*res,res=res)
     layout(cbind(1,2))
     par(mar=c(2,2,0,0),oma=c(2,2,1,1))
     #Generate the implied z distributions /*fold*/ {{{
@@ -2195,7 +2231,7 @@ if (plot>0) {
     dev.off()
     #/*fend*/}}}
     #Plot the z distributions zoomed in /*fold*/ {{{
-    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_zpaint.png',output.file[loop.num],fixed=TRUE)),height=10*res,width=10*res,res=res)
+    png(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_zpaint.png',output.file[catpath.index],fixed=TRUE)),height=10*res,width=10*res,res=res)
     layout(matrix(1:4,2,2,byrow=T))
     plot(refr.som, type = "property", property = zrefr.cell,#zlim=c(0,1.5),
          main="Z_refr", palette.name=scale.palette(zrefr.cell,palette=BlRd),shape='straight',border=NA,heatkeywidth=som.dim[1]/20,ncol=1e3,heatkeyborder=NA)
@@ -2209,7 +2245,7 @@ if (plot>0) {
     #/*fend*/}}}
   }
   #Plot the effect of the SOM weights /*fold*/ {{{
-  pdf(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),'_wgt_colours.pdf',output.file[loop.num],fixed=TRUE)),height=5,width=10)
+  pdf(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),'_wgt_colours.pdf',output.file[catpath.index],fixed=TRUE)),height=5,width=10)
   par(mar=c(2,2,2,2),oma=c(3,3,3,1))
   suppressWarnings(lay.mat<-matrix(c(1:(length(factor.label)+1),rep(0,100)),
                             ncol=4,nrow=min(c(floor(length(factor.label)/4)+2,3)),byrow=T))
@@ -2327,13 +2363,13 @@ if (short.write) {
 #Output the DIR weighted catalogues /*fold*/ {{{
 if(!quiet) { 
   cat(paste(" - Done",as.time(proc.time()[3]-short.timer,digits=0)," ")) 
-  cat(paste("\n  # DIR_weights Training catalogue name:",sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE),'\n')) 
+  cat(paste("\n  # DIR_weights Training catalogue name:",sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE),'\n')) 
   cat(paste("  > Outputing DIR weights catalogue")) 
   timer<-proc.time()[3]
 }
 #Output the training catalogue /*fold*/ {{{
-print(paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)))
-write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)),train.cat,quote=F,row.names=F,extname='OBJECTS')
+#print(paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)))
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)),train.cat,quote=F,row.names=F,extname='OBJECTS')
 #/*fend*/}}}
 #Notify /*fold*/ {{{
 if(!quiet) { 
@@ -2342,12 +2378,12 @@ if(!quiet) {
 }
 #/*fend*/}}}
 if(!quiet) { 
-  cat(paste("\n  # DIR_weights Reference catalogue name:",sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE),'\n')) 
+  cat(paste("\n  # DIR_weights Reference catalogue name:",sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE),'\n')) 
   cat(paste("  > Outputing DIR weights catalogue")) 
   timer<-proc.time()[3]
 }
 #Output the reference catalogue /*fold*/ {{{
-write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[loop.num]),paste0('_refr_DIRsom',addstr[loop.num],'.',output.ending[loop.num]),output.file[loop.num],fixed=TRUE)),refr.cat,quote=F,row.names=F,extname='OBJECTS')
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)),refr.cat,quote=F,row.names=F,extname='OBJECTS')
 #/*fend*/}}}
 #Notify /*fold*/ {{{
 if(!quiet) { 
@@ -2359,12 +2395,14 @@ if(!quiet) {
 
 #Notify & Loop /*fold*/ {{{
 if(!quiet & loop.num!=loop.length) { 
-  cat(paste("Loop completed. Elapsed time:",as.time(proc.time()[3]-start.timer,digits=0),
-            "; Approximate time remaining:",
+  cat(paste("Loop completed.\n   Loop time:",as.time(proc.time()[3]-loop.timer,digits=0),
+            "\n   Elapsed time:",as.time(proc.time()[3]-start.timer,digits=0),
+            "\n   Approximate time remaining:",
             as.time((proc.time()[3]-start.timer)/(loop.num-loop.start+1)*(loop.length-loop.num),digits=0),"\n")) 
 }
 #/*fend*/}}}
 #/*fend*/}}}
+catpath.index.prev<-catpath.index
 }
 
 #Notify and End /*fold*/ {{{
