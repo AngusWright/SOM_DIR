@@ -314,6 +314,7 @@ WtBuRd<-colorRampPalette(c('white',rev(brewer.pal(10,"RdBu")[-(5)])))
 refr.truth<-only.som<-force<-sparse.som<-reuse<-useMult<-quiet<-FALSE
 optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
 optimize.z.threshold<-0.01
+optimize.min.nhc<-2000
 loop.start<-1
 plot<-0
 sparse.min.density<-50
@@ -547,6 +548,17 @@ while (length(inputs)!=0) {
     #Define whether we want to compute the true z of the reference sample /*fold*/ {{{
     inputs<-inputs[-1]
     refr.truth<-TRUE
+    #/*fend*/}}}
+  } else if (inputs[1]=='--optimise.minN') {
+    #Define whether we want to optimise the number of HCs for representation /*fold*/ {{{
+    inputs<-inputs[-1]
+    optimise.min.nhc<-as.integer(inputs[1])
+    if (is.na(optimise.min.nhc)) { 
+      stop("Requested minimum number of HCs is not a number!")
+    } else if (!is.finite(optimise.min.nhc)) { 
+      stop("Requested minimum number of HCs is not finite!")
+    } 
+    inputs<-inputs[-1]
     #/*fend*/}}}
   } else if (inputs[1]=='--optimise') {
     #Define whether we want to optimise the number of HCs for representation /*fold*/ {{{
@@ -1650,6 +1662,7 @@ if (optimise.HCs) {
   muz.fiducial<-muz[which(HC.steps==factor.nbins)]
   dneff.fiducial<-dneff[which(HC.steps==factor.nbins)]
   HCs.possible<-HC.steps[which(abs(muz-muz.fiducial)<=optimize.z.threshold)]
+  HC.possible<-HC.possible[which(HC.possible>optimise.min.nhc)]
   HC.optimal<-min(HCs.possible)
   muz.optimal<-muz[which(HC.steps==HC.optimal)]
   if (refr.truth) {  
