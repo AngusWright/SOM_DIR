@@ -718,6 +718,12 @@ while (length(inputs)!=0) {
 #/*fend*/}}}
 #/*fend*/}}}
 
+# Check for misspecified min Ncluster /*fold*/ {{{
+if (optimise.min.nhc > prod(som.dim)) {
+  stop("Requested optimise.min.nhc is greater than the number of SOM cells!")
+}
+#/*fend*/}}}
+
 #Setup the QC expression {{{ 
 if (!exists("qc.expr") & do.QC) {
   if (count.variable.t=="" & count.variable.r=="") { 
