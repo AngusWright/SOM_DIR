@@ -313,8 +313,8 @@ WtBuRd<-colorRampPalette(c('white',rev(brewer.pal(10,"RdBu")[-(5)])))
 #Default parameter values /*fold*/ {{{
 refr.truth<-only.som<-force<-sparse.som<-reuse<-useMult<-quiet<-FALSE
 optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
-optimize.z.threshold<-0.01
-optimize.min.nhc<-2000
+optimise.z.threshold<-0.01
+optimise.min.nhc<-1
 loop.start<-1
 plot<-0
 sparse.min.density<-50
@@ -1667,8 +1667,8 @@ if (optimise.HCs) {
   #Select the optimal HC step {{{
   muz.fiducial<-muz[which(HC.steps==factor.nbins)]
   dneff.fiducial<-dneff[which(HC.steps==factor.nbins)]
-  HCs.possible<-HC.steps[which(abs(muz-muz.fiducial)<=optimize.z.threshold)]
-  HC.possible<-HC.possible[which(HC.possible>optimise.min.nhc)]
+  HCs.possible<-HC.steps[which(abs(muz-muz.fiducial)<=optimise.z.threshold)]
+  HC.possible<-HC.possible[which(HC.possible>=optimise.min.nhc)]
   HC.optimal<-min(HCs.possible)
   muz.optimal<-muz[which(HC.steps==HC.optimal)]
   if (refr.truth) {  
