@@ -1668,7 +1668,7 @@ if (optimise.HCs) {
   muz.fiducial<-muz[which(HC.steps==factor.nbins)]
   dneff.fiducial<-dneff[which(HC.steps==factor.nbins)]
   HCs.possible<-HC.steps[which(abs(muz-muz.fiducial)<=optimise.z.threshold)]
-  HC.possible<-HC.possible[which(HC.possible>=optimise.min.nhc)]
+  HCs.possible<-HCs.possible[which(HCs.possible>=optimise.min.nhc)]
   HC.optimal<-min(HCs.possible)
   muz.optimal<-muz[which(HC.steps==HC.optimal)]
   if (refr.truth) {  
