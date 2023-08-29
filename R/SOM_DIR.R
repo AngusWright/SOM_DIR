@@ -968,9 +968,24 @@ if (testing) {
 }
 #Check for bad redshift values 
 if (any(train.cat[[zt.label]]<0)) { 
-  cat("(WARNING)")
+  cat(" (z<0 WARNING)")
   warning("Truncating training redshifts to be >= 0!")
   train.cat[[zt.label]][which(train.cat[[zt.label]]<0)]<-0
+}
+#Check for bad training count values 
+if (count.variable.t!="") { 
+  if (any(train.cat[[count.variable.t]]<0)) { 
+    cat(" (weight<0 WARNING)")
+    warning("Truncating training count variable to be >= 0!")
+    train.cat[[count.variable.t]][which(train.cat[[count.variable.t]]<0)]<-0
+  }
+}
+#Check for zero count values 
+if (count.variable.t!="" & truncate) { 
+  if (any(train.cat[[count.variable.t]]==0)) { 
+    cat(" (truncating weight=0 sources)")
+    train.cat<-train.cat[which(train.cat[[count.variable.t]]>0),]
+  }
 }
 #Catalogue length/*fold*/ {{{
 train.cat.len<-nrow(train.cat)
@@ -1025,9 +1040,24 @@ if (testing) {
 if (refr.truth) {
   #Check for bad redshift values 
   if (any(refr.cat[[zt.label]]<0)) { 
-    cat("(WARNING)")
+    cat(" (z<0 WARNING)")
     warning("Truncating reference truth redshifts to be >= 0!")
     refr.cat[[zt.label]][which(refr.cat[[zt.label]]<0)]<-0
+  }
+}
+#Check for bad reference count values 
+if (count.variable.r!="") { 
+  if (any(refr.cat[[count.variable.r]]<0)) { 
+    cat(" (weight<0 WARNING)")
+    warning("Truncating reference count variable to be >= 0!")
+    refr.cat[[count.variable.r]][which(refr.cat[[count.variable.r]]<0)]<-0
+  }
+}
+#Check for zero count values 
+if (count.variable.t!="" & truncate) { 
+  if (any(refr.cat[[count.variable.r]]==0)) { 
+    cat(" (truncating weight=0 sources)")
+    refr.cat<-refr.cat[which(refr.cat[[count.variable.r]]>0),]
   }
 }
 #Catalogue length
