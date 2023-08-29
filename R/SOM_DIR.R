@@ -313,6 +313,7 @@ WtBuRd<-colorRampPalette(c('white',rev(brewer.pal(10,"RdBu")[-(5)])))
 #Default parameter values /*fold*/ {{{
 refr.truth<-only.som<-force<-sparse.som<-reuse<-useMult<-quiet<-FALSE
 optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
+truncate<-TRUE
 optimise.z.threshold<-0.01
 optimise.min.nhc<-1
 loop.start<-1
@@ -422,6 +423,11 @@ while (length(inputs)!=0) {
     do.QC<-FALSE
     inputs<-inputs[-1]
     warning("Not performing QC of clusters!") 
+    #/*fend*/}}}
+  } else if (inputs[1]=='--notrunc') {
+    #Do not truncate entries with zero input weight /*fold*/ {{{
+    truncate<-FALSE
+    inputs<-inputs[-1]
     #/*fend*/}}}
   } else if (inputs[1]=='--zt.calib') {
     #Read the quality control expressions /*fold*/ {{{
