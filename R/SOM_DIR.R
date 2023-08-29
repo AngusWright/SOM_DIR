@@ -989,8 +989,9 @@ if (count.variable.t!="") {
 #Check for zero count values 
 if (count.variable.t!="" & truncate) { 
   if (any(train.cat[[count.variable.t]]==0)) { 
-    cat(" (truncating weight=0 sources)")
-    train.cat<-train.cat[which(train.cat[[count.variable.t]]>0),]
+    ind<-which(train.cat[[count.variable.t]]>0)
+    cat(paste0(" (truncating weight=0 sources: ",round(digits=1,length(ind)/nrow(train.cat)*100),"% remaining)"))
+    train.cat<-train.cat[ind,]
   }
 }
 #Catalogue length/*fold*/ {{{
@@ -1060,10 +1061,11 @@ if (count.variable.r!="") {
   }
 }
 #Check for zero count values 
-if (count.variable.t!="" & truncate) { 
+if (count.variable.r!="" & truncate) { 
   if (any(refr.cat[[count.variable.r]]==0)) { 
-    cat(" (truncating weight=0 sources)")
-    refr.cat<-refr.cat[which(refr.cat[[count.variable.r]]>0),]
+    ind<-which(refr.cat[[count.variable.r]]>0)
+    cat(paste0(" (truncating weight=0 sources: ",round(digits=1,length(ind)/nrow(refr.cat)*100),"% remaining)"))
+    refr.cat<-refr.cat[ind,]
   }
 }
 #Catalogue length
