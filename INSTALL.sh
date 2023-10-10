@@ -27,18 +27,16 @@ $R --no-save --slave  <<EOF
 
 #Function to quickly check for and install libraries
 require.and.load<-function(name,githubrep) { 
-  if (suppressWarnings(!require(name,character.only=TRUE))) { 
-    if (!missing(githubrep)) { 
-      remotes::install_github(paste(githubrep,name,sep='/'),upgrade='always')
-      if (grepl('/',name)) {
-        name<-rev(strsplit(name,'/')[[1]])[1]
-      }
-    } else { 
-      install.packages(name,repos='https://cloud.r-project.org/')
+  if (!missing(githubrep)) { 
+    remotes::install_github(paste(githubrep,name,sep='/'),upgrade='always')
+    if (grepl('/',name)) {
+      name<-rev(strsplit(name,'/')[[1]])[1]
     }
-    if (!require(name,character.only=TRUE)) { 
-      stop(paste("Failed to install package",name))
-    }
+  } else { 
+    install.packages(name,repos='https://cloud.r-project.org/')
+  }
+  if (!require(name,character.only=TRUE)) { 
+    stop(paste("Failed to install package",name))
   }
 }
 
