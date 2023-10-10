@@ -78,6 +78,7 @@ suppressWarnings(suppressPackageStartupMessages(require(kohonen)))
 suppressWarnings(suppressPackageStartupMessages(require(RColorBrewer)))
 suppressWarnings(suppressPackageStartupMessages(require(helpRfuncs)))
 #suppressWarnings(suppressPackageStartupMessages(require(LAMBDAR)))
+suppressWarnings(suppressPackageStartupMessages(require(magicaxis)))
 suppressWarnings(suppressPackageStartupMessages(require(data.table)))
 suppressWarnings(suppressPackageStartupMessages(require(doParallel)))
 suppressWarnings(suppressPackageStartupMessages(require(KernSmooth)))
@@ -2283,8 +2284,8 @@ if (plot>0) {
       syn.train.z[train.ind]<-sample(train.cat[[zt.label]][train.ind],size=length(train.ind),replace=T)
     }
     #/*fend*/}}}
-    hist2D(train.cat[[zt.label]],syn.train.z,nbins=101,zlog=T,xlim=c(0,2),ylim=c(0,2),xlab='z input',ylab='z sampled',main='Training Sample',asp=0,flip=T)
-    hist2D(refr.cat[[zr.label]],syn.refr.z,nbins=101,zlog=T,xlim=c(0,2),ylim=c(0,2),xlab='z input',ylab='z sampled',main='Reference Sample',asp=0,flip=T)
+    try(hist2D(train.cat[[zt.label]],syn.train.z,dx=0.1,dy=0.1,zlog=T,xlim=c(0,2),ylim=c(0,2),xlab='z input',ylab='z sampled',main='Training Sample',asp=0,flip=T))
+    try(hist2D(refr.cat[[zr.label]],syn.refr.z,dx=0.1,dy=0.1,zlog=T,xlim=c(0,2),ylim=c(0,2),xlab='z input',ylab='z sampled',main='Reference Sample',asp=0,flip=T))
     dev.off()
     #/*fend*/}}}
     #Plot the z distributions zoomed in /*fold*/ {{{
@@ -2426,7 +2427,7 @@ if(!quiet) {
 }
 #Output the training catalogue /*fold*/ {{{
 #print(paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)))
-write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)),train.cat,quote=F,row.names=F,extname='OBJECTS')
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)),train.cat,quote=F,row.names=F)
 #/*fend*/}}}
 #Notify /*fold*/ {{{
 if(!quiet) { 
@@ -2440,7 +2441,7 @@ if(!quiet) {
   timer<-proc.time()[3]
 }
 #Output the reference catalogue /*fold*/ {{{
-write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)),refr.cat,quote=F,row.names=F,extname='OBJECTS')
+write.file(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0('_refr_DIRsom',addstr[catpath.index],'.',output.ending[catpath.index]),output.file[catpath.index],fixed=TRUE)),refr.cat,quote=F,row.names=F)
 #/*fend*/}}}
 #Notify /*fold*/ {{{
 if(!quiet) { 

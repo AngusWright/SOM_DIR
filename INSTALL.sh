@@ -29,7 +29,7 @@ $R --no-save --slave  <<EOF
 require.and.load<-function(name,githubrep) { 
   if (suppressWarnings(!require(name,character.only=TRUE))) { 
     if (!missing(githubrep)) { 
-      devtools::install_github(paste(githubrep,name,sep='/'),upgrade='always')
+      remotes::install_github(paste(githubrep,name,sep='/'),upgrade='always')
       if (grepl('/',name)) {
         name<-rev(strsplit(name,'/')[[1]])[1]
       }
@@ -43,7 +43,7 @@ require.and.load<-function(name,githubrep) {
 }
 
 #Look for and install the important packages for the script
-require.and.load('devtools') 
+require.and.load('remotes') 
 require.and.load('RColorBrewer') 
 require.and.load('kohonen') 
 require.and.load('KernSmooth') 
