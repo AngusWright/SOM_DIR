@@ -222,6 +222,7 @@ plot.segments<-function(codes,col.segments=terrain.colors(ncol(codes)+1),bgcol='
 fsignif<-function(x,digits) gsub('-','\U2212',sapply(signif(x,digits), sprintf, fmt=paste0("%#.",digits,"g")))
 fround<-function(x,digits) gsub('-','\U2212',gsub('-0.00','0.00',(sapply(round(x,digits), sprintf, fmt=paste0("%#.",digits,"f")))))
 #/*fend*/}}}
+
 #Show bandwidth function /*fold*/ {{{
 showbw<-function(dens,kernel=NULL,loc='topleft',scale=0.2,inset=c(0.1,0.1),cex=1,col='black',type='s') {
   #Get location parameters
@@ -321,7 +322,7 @@ loop.start<-1
 plot<-0
 sparse.min.density<-50
 som.data.file<-sparse.var<-NULL
-seed<-666
+seed<-NA
 res<-200
 min.gal.per.core<-1000
 maxNAfrac=1
@@ -347,6 +348,7 @@ ldactoasc<-""# system('which ldactoasc',intern=TRUE)
 train.catalogues<-NULL
 testing<-FALSE
 do.QC<-TRUE
+#priorvol.correction<-FALSE
 #/*fend*/}}}
 #Loop through the command arguments /*fold*/ {{{
 while (length(inputs)!=0) {
@@ -694,6 +696,20 @@ while (length(inputs)!=0) {
     only.som<-TRUE
     inputs<-inputs[-1]
     #/*fend*/}}}
+#  } else if (inputs[1]=='--prior.corr'|inputs[1]=='-pc') {
+#    #Define the SOM dimension /*fold*/ {{{
+#    inputs<-inputs[-1]
+#    priorvol.correction<-TRUE
+#    if (any(grepl('^-',inputs))) {
+#      mag.ids<-1:(which(grepl('^-',inputs))[1]-1)
+#    } else { 
+#      mag.ids<-1:length(inputs)
+#    }
+#    if (length(mag.ids)!=3) { stop("prior.corr must be of length 2, describing the filter for the prior, and the magnitude limits; i.e. --prior.corr r 20 24.5") } 
+#    prior.filter<-inputs[mag.ids[1]]
+#    prior.limits<-inputs[mag.ids[2:3]]
+#    inputs<-inputs[-mag.ids]
+#    #/*fend*/}}}
   } else if (inputs[1]=='--test') { 
     #Run in testing mode /*fold*/ {{{
     testing<-TRUE
@@ -788,7 +804,7 @@ if (reuse) {
     } else if (n.catalogues%%length(som.data.file)==0) { 
       som.data.file<-rep(som.data.file,n.catalogues/length(som.data.file))
     } else { 
-      stop("Input reference catalogue list is neither length 1, length(reference catalogue list), nor a factor of length(reference catalogue list)")
+      stop("Input SOM file list is neither length 1, length(reference catalogue list), nor a factor of length(reference catalogue list)")
     }
   }
 }
@@ -813,11 +829,21 @@ if (!quiet) {
   } else {
     cat(paste0('  --> ',refr.catalogues,'\n'))
   }
+  if (reuse) { 
+    cat("And corresponding input SOM(s):\n ") 
+    if (n.catalogues > 5) { 
+      cat(paste0('  --> ',som.data.file[1:3],'\n'))
+      cat(paste0('  ....\n'))
+      cat(paste0('  --> ',rev(som.data.file)[3:1],'\n'))
+    } else {
+      cat(paste0('  --> ',som.data.file,'\n'))
+    }
+  }
 }
 #/*fend*/}}}
 
 #Set the seed for randomisation /*fold*/ {{{
-set.seed(seed)
+if (is.finite(seed)) { set.seed(seed) }
 #/*fend*/}}}
 
 #Initialise loop counters /*fold*/ {{{
@@ -845,7 +871,7 @@ if (!exists('output.file')) {
 } else if (length(output.file)!=n.catalogues) { 
   #Number the output files by the number of recycles 
   addstr<-paste0("_",floor((1:n.catalogues-1)/length(output.file))+1)
-  output.file<-rep(output.file,n.catalogues)
+  output.file<-rep(output.file,n.catalogues)[1:n.catalogues]
 }
 if (length(addstr)!=n.catalogues) { addstr<-rep(addstr,n.catalogues) } 
 output.ending<-vecsplit(output.file,'.',-1,fixed=T)
@@ -884,6 +910,7 @@ if (reuse) {
 loop.num<-loop.num+1
 #Get the catalogue name and ending from the catalogue path given #/*fold*/ {{{
 if (!quiet) { cat(paste("Working on Catalogues:\n    ",train.catpath,"\n    ",refr.catpath,"\n")) }
+if (!quiet & reuse) { cat(paste("With input SOM:       \n    ",som.datfile,"\n")) }
 train.catnam<-rev(strsplit(train.catpath,'/')[[1]])[1]
 train.ending<-rev(strsplit(train.catnam,'.',fixed=TRUE)[[1]])[1]
 ##Check for the output catalogues /*fold*/ {{{
@@ -1080,6 +1107,19 @@ if (!quiet) {
 }
 
 #/*fend*/}}}
+
+##If needeed: compute the prior volume weights /*fold*/ {{{ 
+#if (priorvol.correction) { 
+#  #Compute the anaytic Nz for the target sample 
+#  nz_lo<-helpRfuncs::analytic_nz(filter=prior.filter,maglim=prior.maglim[1])
+#  nz_hi<-helpRfuncs::analytic_nz(filter=prior.filter,maglim=prior.maglim[2])
+#  #Compute the training sample Nz 
+#
+#  #Compute the prior weights 
+#
+#
+#} 
+##}}}
 
 #Generate the DIR wieights /*fold*/ {{{
 #Notify /*fold*/ {{{
