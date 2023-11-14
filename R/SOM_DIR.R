@@ -314,7 +314,7 @@ WtBuRd<-colorRampPalette(c('white',rev(brewer.pal(10,"RdBu")[-(5)])))
 #Read the options /*fold*/ {{{
 #Default parameter values /*fold*/ {{{
 refr.truth<-only.som<-force<-sparse.som<-reuse<-useMult<-quiet<-FALSE
-optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
+save_refr_som<-optimise.HCs<-do.zcalib<-short.write<-refr.flag<-train.flag<-FALSE
 truncate<-TRUE
 optimise.z.threshold<-0.01
 optimise.min.nhc<-1
@@ -710,6 +710,11 @@ while (length(inputs)!=0) {
 #    prior.limits<-inputs[mag.ids[2:3]]
 #    inputs<-inputs[-mag.ids]
 #    #/*fend*/}}}
+  } else if (inputs[1]=='--saverefsom') {
+    #Do we want to save the reference SOM /*fold*/ {{{
+    save_refr_som<-TRUE
+    inputs<-inputs[-1]
+    #/*fend*/}}}
   } else if (inputs[1]=='--test') { 
     #Run in testing mode /*fold*/ {{{
     testing<-TRUE
@@ -1805,7 +1810,9 @@ save(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),pa
 #}}}
 #Reference Catalogue {{{
 refr.cat$GroupFactor<-refr.som$clust.classif
-save(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0(addstr[catpath.index],'_refr_SOMdata.Rdata'),output.file[catpath.index],fixed=TRUE)),refr.som)
+if (save_refr_som) { 
+  save(file=paste0(output.path,'/',sub(paste0('.',output.ending[catpath.index]),paste0(addstr[catpath.index],'_refr_SOMdata.Rdata'),output.file[catpath.index],fixed=TRUE)),refr.som)
+}
 #}}}
 #}}}
 #Plot the SOM and additional information /*fold*/ {{{
