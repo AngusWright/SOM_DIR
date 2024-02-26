@@ -302,6 +302,11 @@ showbw<-function(dens,kernel=NULL,loc='topleft',scale=0.2,inset=c(0.1,0.1),cex=1
 
 #The colour palette /*fold*/ {{{
 BlRd<-function(n,alpha=1){rainbow(n,end=2/3,alpha=alpha)[n:1]}
+BlRd<-function(n,alpha=1){ 
+  base<-rev(RColorBrewer::brewer.pal(10,"RdBu"))
+  for (i in 1:length(base)) base[i]<-seqinr::col2alpha(base[i],alpha)
+  return=colorRampPalette(base)(n)
+}
 #/*fend*/}}}
 #/*fend*/}}}
 
@@ -336,7 +341,7 @@ keys<-"-k MAG_GAAP_u MAG_GAAP_g MAG_GAAP_r MAG_GAAP_i MAG_GAAP_Z MAG_GAAP_Y MAG_
 zr.label<-"z_spec"
 zt.label<-"Z_B"
 factor.label<-paste0('MAG_GAAP_',c('u','g','r','i','Z','Y','J','H','Ks'))
-factor.nbins<-100
+factor.nbins<-Inf
 som.dim<-c(55,55)
 som.topo<-'hexagonal'
 som.toroidal<-TRUE
@@ -1196,6 +1201,12 @@ if (length(factor.label)<2) {
       stop("SOM data file does not exist! Cannot use previous SOM!\n",som.datfile)
     }
     #/*fend*/}}}
+    #Check the training catalogue is large enough {{{
+    if (nrow(train.cat) < prod(som.dim)) {
+      warning("There are fewer training sources than cells! Reducing som.dim!")
+      som.dim<-floor(som.dim * nrow(train.cat)/prod(som.dim))
+    }
+    #}}}
     #Run the training /*fold*/ {{{
     train.som<-kohtrain(data=train.cat,train.expr=factor.label,som.dim=som.dim,som.topo=som.topo,
                         som.toroidal=som.toroidal,som.iter=som.iter,som.rate=som.rate,n.cores=som.cores,
@@ -1268,6 +1279,11 @@ if (length(factor.label)<2) {
       #/*fend*/}}}
       #Get the colour palette /*fold*/ {{{
       BlRd<-function(n,alpha=1){rainbow(n,end=2/3,alpha=alpha)[n:1]}
+      BlRd<-function(n,alpha=1){ 
+        base<-rev(RColorBrewer::brewer.pal(10,"RdBu"))
+        for (i in 1:length(base)) base[i]<-seqinr::col2alpha(base[i],alpha)
+        return=colorRampPalette(base)(n)
+      }
       #/*fend*/}}}
       #Plot the counts per SOM cell /*fold*/ {{{
       cell.counts<-plot(train.som, type="count",shape='straight',border=NA,heatkeywidth=1,zlog=TRUE)
@@ -2359,6 +2375,7 @@ if (plot>0) {
     lay.mat<-lay.mat[-which(rowSums(lay.mat)==0),]
   }#/*fend*/}}}
 
+  #Raw reference, raw training {{{
   layout(lay.mat)
   for (factor.expr in factor.label) { 
     #Calculate the expression result
@@ -2373,17 +2390,35 @@ if (plot>0) {
       train.good<- train.good & (abs(train.cat[[label]])<90)
     }
     lims<-quantile(refr.value[refr.good],probs=c(0.05,0.95))
-    train.dens<-density(train.value[train.good],bw=0.20/sqrt(12),kern='rect',
-                  from=floor(min(lims)),to=ceiling(max(lims)))
-    refr.dens<-density(refr.value[refr.good],bw=0.20/sqrt(12),
-                  kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+    if (count.variable.t!="") {
+      suppressWarnings(
+      train.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+              weight=train.cat[[count.variable.t]][train.good]/sum(train.cat[[count.variable.t]][train.good],na.rm=T),
+              kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+      )
+    } else { 
+      suppressWarnings(
+      train.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+              kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+      )
+    }
+    if (count.variable.r!="") {
+      refr.dens<-density(refr.value[refr.good],
+                    weight=refr.cat[[count.variable.r]][refr.good]/sum(refr.cat[[count.variable.r]][refr.good]),
+                    bw=0.20/sqrt(12),kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+    } else { 
+      refr.dens<-density(refr.value[refr.good],bw=0.20/sqrt(12),
+                    kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+    } 
     magplot(refr.dens,col='darkred',lwd=2,lty=1,ylim=c(0,(max(c(train.dens$y,refr.dens$y)))),
             side=1:4,label=c(T,T,F,F),xlab=gsub("MAG_GAAP_","",factor.expr),ylab='PDF')
     lines(train.dens,col='darkblue',lwd=2,lty=1)
   }
   plot(1,1,type='n',axes=F,xlab='',ylab='')
   legend('left',legend=c("Raw Reference","Raw Training"),lwd=2,lty=c(1,1),col=c('darkred','darkblue'),bty='n',cex=1.2)
+  #}}}
 
+  #Raw Reference, Weighted Training {{{
   layout(lay.mat)
   for (factor.expr in factor.label) { 
     #Calculate the expression result
@@ -2398,19 +2433,81 @@ if (plot>0) {
       train.good<- train.good & (abs(train.cat[[label]])<90)
     }
     lims<-quantile(refr.value[refr.good],probs=c(0.05,0.95))
-    suppressWarnings(
-    train.wgt.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
-            weight=train.cat$SOMweight[train.good]/sum(train.cat$SOMweight,na.rm=T),
-            kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
-    )
-    refr.dens<-density(refr.value[refr.good],bw=0.20/sqrt(12),
-                  kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+    if (count.variable.t!="") {
+      suppressWarnings(
+      train.wgt.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+              weight=train.cat[[count.variable.t]][train.good]*train.cat$SOMweight[train.good]/sum(train.cat[[count.variable.t]][train.good]*train.cat$SOMweight[train.good],na.rm=T),
+              kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+      )
+    } else { 
+      suppressWarnings(
+      train.wgt.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+              weight=train.cat$SOMweight[train.good]/sum(train.cat$SOMweight[train.good],na.rm=T),
+              kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+      )
+    }
+    if (count.variable.r!="") {
+      refr.dens<-density(refr.value[refr.good],weight=refr.cat[[count.variable.r]][refr.good]/sum(refr.cat[[count.variable.r]][refr.good]),bw=0.20/sqrt(12),
+                    kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+    } else { 
+      refr.dens<-density(refr.value[refr.good],bw=0.20/sqrt(12),
+                    kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+    } 
     magplot(refr.dens,col='darkred',lwd=2,lty=1,ylim=c(0,(max(c(train.wgt.dens$y,refr.dens$y)))),
             side=1:4,label=c(T,T,F,F),xlab=gsub("MAG_GAAP_","",factor.expr),ylab='PDF')
     lines(train.wgt.dens,col='darkblue',lwd=2,lty=1)
   }
   plot(1,1,type='n',axes=F,xlab='',ylab='')
   legend('left',legend=c("Raw Reference","Weighted Training"),lwd=2,lty=c(1,1),col=c('darkred','darkblue'),bty='n',cex=1.2)
+  #}}}
+
+  #Gold Reference, Weighted training {{{
+  layout(lay.mat)
+  for (factor.expr in factor.label) { 
+    #Calculate the expression result
+    train.value<-train.cat[,eval(parse(text=factor.expr))]
+    refr.value<-refr.cat[,eval(parse(text=factor.expr))]
+    #seperate out the components
+    seperated.labels<-unique((vecsplit(gsub('[-+*\\/\\)\\(]'," ",factor.expr),' ')))
+    refr.good<-rep(TRUE,length=refr.cat.len)
+    train.good<-rep(TRUE,length=train.cat.len)
+    for (label in seperated.labels) { 
+      refr.good<- refr.good & (abs(refr.cat[[label]])<90)
+      train.good<- train.good & (abs(train.cat[[label]])<90)
+    }
+    lims<-quantile(refr.value[refr.good],probs=c(0.05,0.95))
+    if (count.variable.t!="") {
+      suppressWarnings(
+      train.wgt.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+              weight=train.cat[[count.variable.t]][train.good]*train.cat$SOMweight[train.good]/
+                 sum(train.cat[[count.variable.t]][train.good]*train.cat$SOMweight[train.good],na.rm=T),
+              kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+      )
+    } else { 
+      suppressWarnings(
+      train.wgt.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+              weight=train.cat$SOMweight[train.good]/sum(train.cat$SOMweight[train.good],na.rm=T),
+              kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+      )
+    }
+    if (count.variable.r!="") {
+      refr.flg.dens<-density(refr.value[refr.good],
+                    weight=ifelse(refr.cat$SOMweight[refr.good]>0,1,0)*refr.cat[[count.variable.r]][refr.good]/
+                       sum(ifelse(refr.cat$SOMweight[refr.good]>0,1,0)*refr.cat[[count.variable.r]][refr.good]),
+                    bw=0.20/sqrt(12),kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+    } else { 
+      refr.flg.dens<-density(refr.value[refr.good],bw=0.20/sqrt(12),
+              weight=ifelse(refr.cat$SOMweight[refr.good]>0,1,0)/length(which(refr.cat$SOMweight[refr.good]>0)),
+              kern='rect',from=floor(min(lims)),to=ceiling(max(lims))
+      )
+    } 
+    magplot(refr.flg.dens,col='darkred',lwd=2,lty=1,ylim=c(0,(max(c(train.wgt.dens$y,refr.flg.dens$y)))),
+            side=1:4,label=c(T,T,F,F),xlab=gsub("MAG_GAAP_","",factor.expr),ylab='PDF')
+    lines(train.wgt.dens,col='darkblue',lwd=2,lty=1)
+  }
+  plot(1,1,type='n',axes=F,xlab='',ylab='')
+  legend('left',legend=c("Gold Reference","Weighted Training"),lwd=2,lty=c(1,1),col=c('darkred','darkblue'),bty='n',cex=1.2)
+  #}}}
 
   if (plot>1) { 
     layout(lay.mat)
@@ -2427,13 +2524,30 @@ if (plot>0) {
         train.good<- train.good & (abs(train.cat[[label]])<90)
       }
       lims<-quantile(refr.value[refr.good],probs=c(0.05,0.95))
-      suppressWarnings(
-      refr.wgt.dens<-density(refr.value[refr.good],bw=0.20/sqrt(12),
-              weight=refr.cat$SOMweight[refr.good]/sum(refr.cat$SOMweight,na.rm=T),
-              kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
-      )
-      train.dens<-density(train.value[train.good],bw=0.20/sqrt(12),kern='rect',
-                    from=floor(min(lims)),to=ceiling(max(lims)))
+      if (count.variable.r!="") {
+        refr.wgt.dens<-density(refr.value[refr.good],
+                      weight=refr.cat$SOMweight[refr.good]*refr.cat[[count.variable.r]][refr.good]/
+                         sum(refr.cat$SOMweight[refr.good]*refr.cat[[count.variable.r]][refr.good]),
+                      bw=0.20/sqrt(12),kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+      } else { 
+        refr.wgt.dens<-density(refr.value[refr.good],bw=0.20/sqrt(12),
+                weight=refr.cat$SOMweight[refr.good]/sum(refr.cat$SOMweight[refr.good]),
+                kern='rect',from=floor(min(lims)),to=ceiling(max(lims))
+        )
+      } 
+      if (count.variable.t!="") {
+        suppressWarnings(
+        train.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+                weight=train.cat[[count.variable.t]][train.good]/
+                   sum(train.cat[[count.variable.t]][train.good],na.rm=T),
+                kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+        )
+      } else { 
+        suppressWarnings(
+        train.dens<-density(train.value[train.good],bw=0.20/sqrt(12),
+                kern='rect',from=floor(min(lims)),to=ceiling(max(lims)))
+        )
+      }
       magplot(refr.wgt.dens,col='darkred',lwd=2,lty=1,ylim=c(0,(max(c(train.dens$y,refr.wgt.dens$y)))),
               side=1:4,label=c(T,T,F,F),xlab=gsub("MAG_GAAP_","",factor.expr),ylab='PDF')
       lines(train.dens,col='darkblue',lwd=2,lty=1)
