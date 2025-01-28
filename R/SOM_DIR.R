@@ -8,61 +8,102 @@
 .help.print<-function() { 
   cat(paste("\nSOM_DIR.R: script for creating DIR weights for an arbitrary survey\n",
             "Script calling Syntax:\n",
-            "Rscript SOM_DIR.R [options] -i <InputReferenceCat> <InputTrainingCat1> <InputTrainingCat2>...\n",
+            "Rscript SOM_DIR.R [options] -r <InputReferenceCat1> ... -t <InputTrainingCat1> <InputTrainingCat2>...\n",
             "Available options:\n",
-            "                -p : switch which create plots of the data and SOMs\n",
-            "                -q : switch which causes the code to execute quietly (no prompts)\n",
-            "                -i : list of input catalogues\n",
-            "                -k : list of catalogue keywords. Can be length 2 or more:\n",
-            "                     i.e. -k RAkey DECkey FACTORkey1 FACTORkey2 ...\n",
-            "                     The first two factors must be those that describe the RA & DEC in the input catalogue.\n",
-            "                     The final FACTOR keys, if present, determine the variables that are used for grouping\n",
-            "                     sources into systematically variable groups. E.g. it can be just the pointing ID,\n",
-            "                     so that randoms are allowed to vary in density between adjacent observations,\n",
-            "                     thus better matching the observed source number density variations on sky.\n",
-            "                     Or it can be a combination of SEEING, SKYBRIGHTNESS, etc, which are then grouped in a SOM\n",
-            "                     and modelled simultaneously by their number density.\n",
-            "                     ---> If not set, the default keys are ALPHA_J2000 DELTA_J2000 THELI_NAME\n",
-            "                -b : Angular binsize for the randoms grid, in arcmin. Default: 1/3\n",
-            "                -l : Path to the LDAC binary file ldactoasc. Default: `which ldactoasc`\n",
-            "                -n : number of Randoms to generate. Default: 13E6\n",
-            "                -m : multiple factor of input catalogue length, used for number of Randoms to generate.\n",
-            "                     i.e. Number of Randoms = M*length(input catalogue). \n",
-            "                     ---> NB: OVERRULES THE -n FLAG WHEN PROVIDED!\n",
-            "            --seed : seed number to use for Randoms generation. Default: 666\n",
-            "--factor.nbins -fn : define the number of hierarchical clusters generated from the FACTORs. Default: 100\n",
-            "     --som.dim -sd : define the dimension of the SOM. Default: 55 55 \n",
-            "    --som.rate -sr : define the rate of convergence of the SOM. Default: 0.1 0.05 \n",
-            "  --som.method -sm : define the method for SOM iteration. Default: 'qbatch' \n",
-            "   --som.cores -sc : define the number of cores used during SOM computation. Default: -1 (All) \n",
-            "    --som.iter -si : define the number of SOM iterations. Default: 100 \n",
-            "    --non.toro -nt : switch which makes the SOM non-toroidal in behaviour\n",
-            "            --test : switch which run the pipeline in testing mode; uses a low-res defaults and a thinned input catalogue\n",
-            "                -h : Print this help\n",
-            "               -hd : Print the default parameter values\n\n\n"))
+            '                  -r : The input reference catalogue(s)\n',
+            '                  -t : The input training catalogue(s)\n',
+            '                 -cr : The count variable for the reference cat\n',
+            '                 -ct : The count variable for the training cat(s)\n',
+            '              --noqc : Do not perform any quality control rejection\n',
+            '           --notrunc : Do not truncate entries with zero input weight\n',
+            '          --zt.calib : An expression that is used to recalibrate the training sample redshift axis (DANGER)\n',
+            '                 -qc : The quality control expressions\n',
+            '                  -k : The catalogue keys/expressions used for training the SOM\n',
+            '                 -of : The output file name(s)\n',
+            '                  -o : The output directory\n',
+            '                 -ls : The loop.start counter\n',
+            '          --toroidal : The SOM should be toroidal (this is the default)\n',
+            ' -nt | --nontoroidal : The SOM should be non-toroidal (default is toroidal)\n',
+            '              --topo : Define the topology of the SOM\n',
+            '          --zt.label : The z_spec label in the training catalogue\n',
+            '          --zr.label : The z_phot label in the training & reference catalogues\n',
+            '        --train.flag : Output the training weights as a 0/1 flag rather than a weight\n',
+            '         --refr.flag : Output the reference weights as a 0/1 flag rather than a weight\n',
+            '       --short.write : Write short catalogues with only relevant columns\n',
+            '        --refr.truth : Compute biases against the true z for the reference sample (i.e. for simulations)\n',
+            '     --optimise.minN : The minimum number of SOM heirarchical clusters (or factor bins) to allow during optimisation\n',
+            '          --optimise : Optimise the number of HCs (or factor bins) for representation\n',
+            '--factor.nbins | -fn : The number of HCs (or factor bins)\n',
+            '        --sparse.var : Sparse sample according to this variable of weights\n',
+            '        --sparse.som : Compute a SOM using a `frac` sparse sampling of the data-vector\n',
+            '           --old.som : Load an already calculated som from file\n',
+            '     --som.dim | -sd : The SOM dimension\n',
+            '    --som.rate | -sr : The SOM rate\n',
+            '  --som.method | -sm : The SOM method\n',
+            '   --som.cores | -sc : The number of SOM cores\n',
+            '  --som.na.max | -na : The maximum fraction of NA entries allowed for an entry to still be used in the SOM\n',
+            '    --som.iter | -si : The number of SOM iterations\n',
+            '      --data.missing : The value for missing data\n',
+            '    --data.threshold : The SOM rate\n',
+            '              --seed : The seed for SOM generation\n',
+            '             --force : Force catalogue creation\n',
+            '          --only.som : Only generate/output the SOM, then end\n',
+            '        --saverefsom : Save the reference SOM to file\n',
+            '                  -p : Create some (pretty ugly) plots\n',
+            '                 -pp : Create lots of (pretty ugly) plots\n',
+            '                 -np : Do not create the plots\n',
+            '                 -as : The addstring\n',
+            '              --test : Run in testing mode\n',
+            '                  -q : Run Quietly\n',
+            '                 -hd : Print the default values help function\n',
+            '                 -h  : Print the help function\n',
+            "\n\n"))
   quit()
 }
 .default.print<-function() { 
   cat(paste("\ngenerate_randoms_2D.R: script for creating 2D randoms for an arbitrary survey geometry\n",
             "Script calling Syntax:\n",
-            "Rscript SOM_DIR.R [options] -i <InputReferenceCat> <InputTrainingCat1> <InputTrainingCat2>...\n",
+            "Rscript SOM_DIR.R [options] -r <InputReferenceCat1> ... -t <InputTrainingCat1> <InputTrainingCat2>...\n",
             "Available option default values:\n",
-            "                  -k : ALPHA_J2000 DELTA_J2000 THELI_NAME \n",
-            "                  -l : `which ldactoasc`\n",
-            "              --seed : 666\n",
-            "  --factor.nbins -fn : 100\n",
-            "       --som.dim -sd : 55 55 \n",
-            "      --som.rate -sr : 0.05 0.01 \n",
-            "    --som.method -sm : 'qbatch' \n",
-            "     --som.cores -sc : -1 \n",
-            "      --som.iter -si : 100 \n",
-            "              --test : modifies these default parameters to:\n",
-            "                       --> -sd : 12x12 \n",
-            "                       --> -si : 20 \n",
-            "                       -->  -b : 4 \n",
-            "                       -->  -m : 1 \n",
-            "                       --> -sa : 4 \n",
-            "NB: items not shown here have no defaults because they behave as switches or are have superseding effects (-m).\n\n"))
+            "Available options:\n",
+            '                 -cr : none\n',
+            '                 -ct : none\n',
+            '          --zt.calib : none\n',
+            '                 -qc : none\n',
+            '                  -k : MAG_GAAP_u MAG_GAAP_g MAG_GAAP_r MAG_GAAP_i MAG_GAAP_Z MAG_GAAP_Y MAG_GAAP_J MAG_GAAP_H MAG_GAAP_Ks\n',
+            '                 -of : The output file name(s)\n',
+            '                  -o : ./\n',
+            '                 -ls : 1\n',
+            '          --toroidal : Flag (default: active)\n',
+            ' -nt | --nontoroidal : Flag (default: inactive)\n',
+            '              --topo : hexagonal (can be hexagonal or rectangular)\n',
+            '          --zt.label : z_spec\n',
+            '          --zr.label : Z_B\n',
+            '     --optimise.minN : 1\n',
+            '--factor.nbins | -fn : Inf\n',
+            '        --sparse.var : none\n',
+            '           --old.som : none\n',
+            '     --som.dim | -sd : 55 55\n',
+            '    --som.rate | -sr : 0.05 0.01\n',
+            '  --som.method | -sm : pbatch\n',
+            '   --som.cores | -sc : 12\n',
+            '  --som.na.max | -na : 1\n',
+            '    --som.iter | -si : 100\n',
+            '      --data.missing : -99\n',
+            '    --data.threshold : 0 80 \n',
+            '              --seed : 666 \n',
+            '             --force : Flag (default: inactive)\n',
+            '          --only.som : Flag (default: inactive)\n',
+            '        --saverefsom : Flag (default: inactive)\n',
+            '                  -p : Flag (default: inactive)\n',
+            '                 -pp : Flag (default: inactive)\n',
+            '                 -np : Flag (default: active)\n',
+            '                 -as : none  \n',
+            '              --test : Flag (default: inactive)\n',
+            '                  -q : Flag (default: inactive)\n',
+            '                 -hd : Print this default values help function\n',
+            '                 -h  : Print the help function\n',
+            "\n\n"))
   quit()
 }
 #/*fend*/}}}
@@ -334,7 +375,6 @@ maxNAfrac=1
 data.threshold<-c(0,80)
 data.missing<--99
 count.variable.r<-count.variable.t<-''
-ldac.options.1<-ldac.options.2<-''
 addstr<-''
 output.path<-'./'
 keys<-"-k MAG_GAAP_u MAG_GAAP_g MAG_GAAP_r MAG_GAAP_i MAG_GAAP_Z MAG_GAAP_Y MAG_GAAP_J MAG_GAAP_H MAG_GAAP_Ks"
@@ -349,7 +389,6 @@ som.iter<-100
 som.method<-"pbatch"
 som.cores<-12
 som.rate<-c(0.05,0.01)
-ldactoasc<-""# system('which ldactoasc',intern=TRUE)
 train.catalogues<-NULL
 testing<-FALSE
 do.QC<-TRUE
@@ -497,24 +536,6 @@ while (length(inputs)!=0) {
     #Define the loop.start counter /*fold*/ {{{
     inputs<-inputs[-1]
     loop.start<-as.numeric(inputs[1])
-    inputs<-inputs[-1]
-    #/*fend*/}}}
-  } else if (inputs[1]=='-l') {
-    #Define the ldactoasc binary  /*fold*/ {{{
-    inputs<-inputs[-1]
-    ldactoasc<-inputs[1]
-    inputs<-inputs[-1]
-    #/*fend*/}}}
-  } else if (inputs[1]=='-lor') {
-    #Define the ldacoptions for reference catalogue /*fold*/ {{{
-    inputs<-inputs[-1]
-    ldac.options.1<-inputs[1]
-    inputs<-inputs[-1]
-    #/*fend*/}}}
-  } else if (inputs[1]=='-lot') {
-    #Define the ldacoptions for training catalogue(s)  /*fold*/ {{{
-    inputs<-inputs[-1]
-    ldac.options.2<-inputs[1]
     inputs<-inputs[-1]
     #/*fend*/}}}
   } else if (inputs[1]=='-nt'|inputs[1]=='--nontoroidal') {
