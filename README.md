@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="Demo/Outputs/TrainingCat_zpaint.png" alt="Example SOM maps of reference and photometric redshift" width="800">
+  <img src="assests/TrainingCat_zpaint.png" alt="Example SOM maps of reference and photometric redshift" width="800">
 </p>
 
 ## What it does
@@ -58,7 +58,7 @@ Rscript R/SOM_DIR.R \
   --noqc
 ```
 
-The generated weighted catalogues and diagnostics are written to `Demo/Outputs/`. The `--force` option is necessary here because that directory already contains example outputs.
+The generated weighted catalogues and diagnostics are written to `Demo/Outputs/`. The `--force` option is necessary in cases where that directory already contains example outputs (i.e. the demo was previously run).
 
 ## Inputs
 
@@ -109,7 +109,7 @@ Run `Rscript R/SOM_DIR.R -h` for the full command reference and `Rscript R/SOM_D
 ```text
 R/SOM_DIR.R       Main command-line workflow
 Demo/Inputs/      Example reference and training catalogues
-Demo/Outputs/     Example weighted catalogues, saved SOMs, and diagnostics
+Demo/Outputs/     Example weighted catalogues, saved SOMs, and diagnostics (not tracked by git)
 INSTALL.sh        Dependency installer
 DEMO              Standalone copy of the demonstration command
 ```
