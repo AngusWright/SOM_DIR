@@ -10,7 +10,8 @@
 Rscript R/SOM_DIR.R -r Demo/Inputs/ReferenceCat.csv -t Demo/Inputs/TrainingCat.csv \
                     --zr.label z_phot --zt.label z_spec \
                     -k MAG_u MAG_g MAG_r MAG_i MAG_g-MAG_r \
+                    -ct MAG_r -cr MAG_r \
                     -o Demo/Outputs/ \
-                    --som.dim 24 24 \
-                    -pp -sc 1 --force --noqc
+                    --som.dim 54 54 \
+                    -pp -sc 100 -si 1000 --force --noqc
 
